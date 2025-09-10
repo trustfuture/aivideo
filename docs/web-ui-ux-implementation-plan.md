@@ -9,7 +9,7 @@
 - 提升可访问性（a11y）与性能（RSC、Streaming、虚拟化）。
 
 ## 里程碑与优先级
-（进度：P0 已完成；品牌强调色：Indigo）
+（进度：P0 已完成；品牌强调色：Indigo；品牌名：SceneCraft/幕景）
 - P0 基础（约 1 周）✅ 已完成
   - 设计 Tokens + 主题（浅/深）→ Tailwind v4 + shadcn 变量对齐。
   - AppShell 布局：Sidebar + Topbar + Content + Command Menu（最小实现）。
@@ -161,8 +161,9 @@ pnpm dlx shadcn-ui@latest add button input textarea select checkbox radio label 
   - 统一基础组件：Button/Input/Dialog/Dropdown/Tabs/Tooltip/Toast（已接入）。
   - 最小演示页：`app/demo/page.tsx` 展示按钮、输入、Tabs、Tooltip。
   - 将首页/任务列表/表单设置等常见 `text-neutral-*`、`bg-white`、`bg-neutral-*` 调整为语义色（`text-muted-foreground`、`bg-card`、`bg-muted`）。
+  - 新增外观选项：密度（`compact/cozy`）+ 圆角（`xs/sm/md`）持久化到 `localStorage`，通过 `data-density` 与 `--radius` 实时生效；为按钮等加入轻量 hover/active 动效。
 
-提示：品牌名称可通过 `web/.env.local` 设置 `NEXT_PUBLIC_BRAND_NAME`（或修改 `web/lib/brand.ts` 默认值）。
+提示：品牌名称可通过 `web/.env.local` 设置 `NEXT_PUBLIC_BRAND_NAME`（或修改 `web/lib/brand.ts` 默认值，当前为 `SceneCraft 幕景`）。
 - P1
   - 集成 TanStack Table，封装 `components/ui/data-table/*`（列定义、Toolbar、密度切换）。
   - 统一表单：`components/ui/form/*` 封装 RHF + zod + 表单行/分组组件。

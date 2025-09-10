@@ -24,6 +24,10 @@
   --input: 240 5.9% 90%;
   --ring: 226 70% 55%;
   --radius: 8px;
+  /* Controls (density) */
+  --control-h: 36px;
+  --control-px: 12px;
+  --control-py: 6px;
 }
 
 /* Dark theme (class) — for Tailwind darkMode: 'class' */
@@ -68,4 +72,16 @@ body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
   background-image:
     radial-gradient(1200px 600px at 20% -10%, hsl(var(--primary)/0.12), transparent 60%),
     radial-gradient(1000px 500px at 110% 10%, hsl(var(--primary)/0.10), transparent 60%);
+}
+
+/* Density presets */
+:root[data-density="compact"] {
+  --control-h: 32px;
+  --control-px: 10px;
+  --control-py: 4px;
+}
+:root[data-density="cozy"] {
+  --control-h: 40px;
+  --control-px: 14px;
+  --control-py: 8px;
 }

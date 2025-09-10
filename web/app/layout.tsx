@@ -21,9 +21,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           {`
           try {
             const t = localStorage.getItem('theme') || 'system';
+            const d = localStorage.getItem('density') || 'compact';
+            const r = localStorage.getItem('radius') || 'sm';
             const m = window.matchMedia('(prefers-color-scheme: dark)').matches;
             const dark = t === 'dark' || (t === 'system' && m);
             document.documentElement.classList.toggle('dark', dark);
+            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-density', d);
+            const radiusMap = { xs: '6px', sm: '8px', md: '10px' };
+            document.documentElement.style.setProperty('--radius', radiusMap[r] || '8px');
           } catch (e) {}
           `}
         </Script>
