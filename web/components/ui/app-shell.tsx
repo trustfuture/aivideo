@@ -28,7 +28,7 @@ export function AppShell({ children }: AppShellProps) {
       <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(v => !v)} />
       <div className="flex min-h-screen flex-1 flex-col">
         <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <TopNav onOpenCommand={() => setOpenCmd(true)} onToggleSidebar={() => setSidebarCollapsed(v => !v)} sidebarCollapsed={sidebarCollapsed} />
+          <TopNav onOpenCommand={() => setOpenCmd(true)} />
         </header>
         <main className="mx-auto w-full max-w-7xl flex-1 p-4">
           {children}

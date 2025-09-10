@@ -3,11 +3,12 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Home, ListChecks, PlusCircle, Settings, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface SidebarProps {
   collapsed?: boolean
-  onToggle?: () => void
+  onToggle?: () => void // retained for API compatibility; no local button
 }
 
 const NAV = [
@@ -27,13 +28,16 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
       )}
     >
       <div className="flex h-12 items-center justify-end px-2">
-        <button
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          aria-label="Collapse sidebar"
-          onClick={onToggle}
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </button>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'} onClick={onToggle}>
+                {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">{collapsed ? '展开' : '收起'}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
       <nav className="mt-2 grid gap-1 p-2">
         <TooltipProvider delayDuration={300}>
