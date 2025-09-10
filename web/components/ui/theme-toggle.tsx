@@ -12,6 +12,8 @@ function applyTheme(theme: Theme) {
   const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
   const isDark = theme === 'dark' || (theme === 'system' && systemDark)
   root.classList.toggle('dark', isDark)
+  // keep data-theme for compatibility with any [data-theme="dark"] selectors
+  root.setAttribute('data-theme', isDark ? 'dark' : 'light')
 }
 
 export function ThemeToggle() {
@@ -48,4 +50,3 @@ export function ThemeToggle() {
 }
 
 export default ThemeToggle
-

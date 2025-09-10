@@ -26,8 +26,7 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
         collapsed ? 'w-[64px]' : 'w-[220px]'
       )}
     >
-      <div className="flex h-12 items-center justify-between px-3">
-        <span className={cn('truncate text-sm font-semibold', collapsed && 'opacity-0')}>MoneyPrinterTurbo</span>
+      <div className="flex h-12 items-center justify-end px-2">
         <button
           className="inline-flex h-7 w-7 items-center justify-center rounded-md border text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           aria-label="Collapse sidebar"
@@ -70,4 +69,3 @@ export function Sidebar({ collapsed = false, onToggle }: SidebarProps) {
 }
 
 export default Sidebar
-

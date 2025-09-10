@@ -57,3 +57,15 @@ body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; 
 
 /* Ensure default Tailwind `.border` uses design token color */
 :where(.border) { border-color: hsl(var(--border)); }
+
+/* App gradient background for subtle depth (Linear-style) */
+.app-gradient {
+  background-image:
+    radial-gradient(1200px 600px at 20% -10%, hsl(var(--primary)/0.06), transparent 60%),
+    radial-gradient(1000px 500px at 110% 10%, hsl(var(--primary)/0.04), transparent 60%);
+}
+.dark .app-gradient {
+  background-image:
+    radial-gradient(1200px 600px at 20% -10%, hsl(var(--primary)/0.12), transparent 60%),
+    radial-gradient(1000px 500px at 110% 10%, hsl(var(--primary)/0.10), transparent 60%);
+}
