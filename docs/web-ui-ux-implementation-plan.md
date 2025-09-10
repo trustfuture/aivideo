@@ -9,11 +9,12 @@
 - 提升可访问性（a11y）与性能（RSC、Streaming、虚拟化）。
 
 ## 里程碑与优先级
-- P0 基础（约 1 周）
+（进度：P0 已完成；品牌强调色：Indigo）
+- P0 基础（约 1 周）✅ 已完成
   - 设计 Tokens + 主题（浅/深）→ Tailwind v4 + shadcn 变量对齐。
-  - AppShell 布局：Sidebar + Topbar + Content + Command Menu。
-  - 基础组件规范化：Button/Input/Select/Dialog/Dropdown/Tabs/Tooltip/Toaster。
-  - 状态系统：Loading/Empty/Error/Skeleton，统一占位与文案。
+  - AppShell 布局：Sidebar + Topbar + Content + Command Menu（最小实现）。
+  - 基础组件规范化：Button/Input/Select/Dialog/Dropdown/Tabs/Tooltip/Toaster（已接入）。
+  - 状态系统：Loading/Empty/Error/Skeleton，统一占位与文案（已有组件）。
 - P1 核心体验（约 1–1.5 周）
   - Data Table（TanStack Table）+ 虚拟滚动 + Toolbar（筛选/排序/密度）。
   - 表单模式：react‑hook‑form + zod，内联校验，表单布局规范。
@@ -153,12 +154,12 @@ pnpm dlx shadcn-ui@latest add button input textarea select checkbox radio label 
 - 暗色模式：`<html data-theme="dark">` 切换，持久化在 `localStorage`。
 
 ## 实施清单（逐项落地）
-- P0
-  - 在 `app/layout.tsx` 引入字体（`next/font`）与 Toaster；接入主题脚本。
-  - 在 `app/globals.css` 写入颜色/半径 Tokens（浅/深），统一焦点样式。
-  - 搭建 `components/ui/app-shell.tsx`，落 Sidebar/Topbar/Content 框架。
-  - 通过 shadcn 安装并统一 Button/Input/Dialog/Dropdown/Tabs/Tooltip/Toast。
-  - 建立状态模式：`components/ui/empty-state.tsx`、`error-state.tsx`、`loading-skeleton.tsx`。
+- P0（已完成）
+  - 在 `app/layout.tsx` 引入 Toaster；集成 AppShell（Sidebar/Topbar/Content）。
+  - 在 `app/globals.css` 写入 Indigo 主题 Tokens（浅/深）。
+  - 搭建 `components/ui/app-shell.tsx`、`components/ui/sidebar.tsx`、`components/ui/command-menu.tsx`。
+  - 统一基础组件：Button/Input/Dialog/Dropdown/Tabs/Tooltip/Toast（已接入）。
+  - 最小演示页：`app/demo/page.tsx` 展示按钮、输入、Tabs、Tooltip。
 - P1
   - 集成 TanStack Table，封装 `components/ui/data-table/*`（列定义、Toolbar、密度切换）。
   - 统一表单：`components/ui/form/*` 封装 RHF + zod + 表单行/分组组件。
@@ -187,4 +188,3 @@ pnpm dlx shadcn-ui@latest add button input textarea select checkbox radio label 
 ---
 
 后续可在 `web/` 内开一个 P0 启动 PR（主题 Tokens + AppShell + 基础组件接入清单 + 最小演示页）。若需要，我可以按 Indigo 或 Violet 作为强调色预置主题。
-
