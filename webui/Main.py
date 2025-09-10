@@ -907,7 +907,64 @@ with right_panel:
         with stroke_cols[1]:
             params.stroke_width = st.slider(tr("Stroke Width"), 0.0, 10.0, 1.5)
 
-start_button = st.button(tr("Generate Video"), use_container_width=True, type="primary")
+cols_actions = st.columns(2)
+plan_button = cols_actions[0].button(tr("Generate Segments Plan"), use_container_width=True)
+start_button = cols_actions[1].button(tr("Generate Video"), use_container_width=True, type="primary")
+
+if plan_button:
+    config.save_config()
+    task_id = str(uuid4())
+    if not params.video_subject and not params.video_script:
+        st.error(tr("Video Script and Subject Cannot Both Be Empty"))
+        scroll_to_bottom()
+        st.stop()
+
+    if params.video_source not in ["pexels", "pixabay", "local"]:
+        st.error(tr("Please Select a Valid Video Source"))
+        scroll_to_bottom()
+        st.stop()
+
+    if params.video_source == "pexels" and not config.app.get("pexels_api_keys", ""):
+        st.error(tr("Please Enter the Pexels API Key"))
+        scroll_to_bottom()
+        st.stop()
+
+    if params.video_source == "pixabay" and not config.app.get("pixabay_api_keys", ""):
+        st.error(tr("Please Enter the Pixabay API Key"))
+        scroll_to_bottom()
+        st.stop()
+
+    if uploaded_files:
+        local_videos_dir = utils.storage_dir("local_videos", create=True)
+        for file in uploaded_files:
+            file_path = os.path.join(local_videos_dir, f"{file.file_id}_{file.name}")
+            with open(file_path, "wb") as f:
+                f.write(file.getbuffer())
+                m = MaterialInfo()
+                m.provider = "local"
+                m.url = file_path
+                if not params.video_materials:
+                    params.video_materials = []
+                params.video_materials.append(m)
+
+    st.toast(tr("Generating Video"))
+    logger.info(tr("Start Generating Video"))
+    logger.info("plan segments request: " + utils.to_json(params))
+    scroll_to_bottom()
+
+    result = tm.start(task_id=task_id, params=params, stop_at="segments")
+    if not result or "segments" not in result:
+        st.error(tr("Video Generation Failed"))
+        logger.error(tr("Video Generation Failed"))
+        scroll_to_bottom()
+        st.stop()
+
+    st.session_state["segment_task_id"] = task_id
+    st.session_state["segments"] = result.get("segments", [])
+    st.session_state["audio_file"] = result.get("audio_file", "")
+    st.session_state["subtitle_path"] = result.get("subtitle_path", "")
+    st.success(tr("Segments Planned"))
+    scroll_to_bottom()
 if start_button:
     config.save_config()
     task_id = str(uuid4())
@@ -983,3 +1040,204 @@ if start_button:
     scroll_to_bottom()
 
 config.save_config()
+
+# ============================
+# Segments Editor (MVP)
+# ============================
+
+from app.models.schema import SegmentItem
+from app.services import video as video_service
+
+with st.container(border=True):
+    st.subheader(tr("Shotlist Table"))
+    if not st.session_state.get("segments"):
+        st.info(tr("Segments not ready"))
+    else:
+        # initialize shotlist from segments if not exists or on refresh
+        if "shotlist" not in st.session_state or not st.session_state.get("shotlist"):
+            st.session_state["shotlist"] = []
+            for s in st.session_state.get("segments", []):
+                st.session_state["shotlist"].append(
+                    {
+                        "order": int(s.get("order", 1)),
+                        "scene_title": s.get("scene_title", ""),
+                        "shot_no": s.get("shot_no", 1 if int(s.get("order", 1)) == 1 else None),
+                        "shot_desc": s.get("shot_desc", ""),
+                        "duration": float(s.get("duration", 1.0)),
+                        "style": s.get("style", ""),
+                    }
+                )
+
+        shotlist = st.session_state.get("shotlist", [])
+
+        header_cols = st.columns([0.6, 1.2, 1.0, 2.2, 1.0, 1.2])
+        header_cols[0].write(tr("Order"))
+        header_cols[1].write(tr("Scene"))
+        header_cols[2].write(tr("Shot No."))
+        header_cols[3].write(tr("Shot Description"))
+        header_cols[4].write(tr("Duration(s)"))
+        header_cols[5].write(tr("Copy Style"))
+
+        for i, row in enumerate(shotlist):
+            cols = st.columns([0.6, 1.2, 1.0, 2.2, 1.0, 1.2])
+            cols[0].markdown(f"**{int(row.get('order', i+1))}**")
+            row["scene_title"] = cols[1].text_input(tr("Scene"), value=row.get("scene_title", ""), key=f"sl_scene_{i}")
+            row["shot_no"] = cols[2].number_input(tr("Shot No."), min_value=1, max_value=999, value=int(row.get("shot_no", 1) or 1), step=1, key=f"sl_no_{i}")
+            row["shot_desc"] = cols[3].text_input(tr("Shot Description"), value=row.get("shot_desc", ""), key=f"sl_desc_{i}")
+            row["duration"] = cols[4].number_input(tr("Duration(s)"), min_value=0.6, max_value=60.0, value=float(row.get("duration", 1.0)), step=0.1, key=f"sl_dur_{i}")
+            row["style"] = cols[5].text_input(tr("Copy Style"), value=row.get("style", ""), key=f"sl_style_{i}")
+
+        sl_btn_cols = st.columns([1, 1])
+        if sl_btn_cols[0].button(tr("Apply To Segments")):
+            # apply shotlist fields to segments
+            segs = st.session_state.get("segments", [])
+            for r in shotlist:
+                ord_idx = int(r.get("order", 1)) - 1
+                if 0 <= ord_idx < len(segs):
+                    segs[ord_idx]["scene_title"] = r.get("scene_title", "")
+                    segs[ord_idx]["shot_no"] = int(r.get("shot_no", 1))
+                    segs[ord_idx]["shot_desc"] = r.get("shot_desc", "")
+                    segs[ord_idx]["style"] = r.get("style", "")
+                    segs[ord_idx]["duration"] = float(r.get("duration", segs[ord_idx].get("duration", 1.0)))
+            st.session_state["segments"] = segs
+            try:
+                task_id = st.session_state.get("segment_task_id")
+                to_save = [SegmentItem(**s) for s in segs]
+                video_service.save_segments(task_id, to_save)
+            except Exception:
+                pass
+            st.success(tr("Segments Planned"))
+
+        if sl_btn_cols[1].button(tr("Generate From Segments")):
+            st.session_state["shotlist"] = []
+            for s in st.session_state.get("segments", []):
+                st.session_state["shotlist"].append(
+                    {
+                        "order": int(s.get("order", 1)),
+                        "scene_title": s.get("scene_title", ""),
+                        "shot_no": s.get("shot_no", 1 if int(s.get("order", 1)) == 1 else 1),
+                        "shot_desc": s.get("shot_desc", ""),
+                        "duration": float(s.get("duration", 1.0)),
+                        "style": s.get("style", ""),
+                    }
+                )
+            st.rerun()
+
+with st.container(border=True):
+    st.subheader(tr("Segments Editor"))
+    if not st.session_state.get("segments"):
+        st.info(tr("Segments not ready"))
+    else:
+        segments = st.session_state.get("segments", [])
+
+        def normalize_orders(items):
+            for idx, s in enumerate(items, 1):
+                s["order"] = idx
+            return items
+
+        # Editor header
+        header_cols = st.columns([0.6, 3.0, 1.0, 1.0, 1.0, 0.8, 0.8])
+        header_cols[0].write(tr("Order"))
+        header_cols[1].write(tr("Material"))
+        header_cols[2].write(tr("Start"))
+        header_cols[3].write(tr("End"))
+        header_cols[4].write(tr("Duration(s)"))
+        header_cols[5].write(tr("Move Up"))
+        header_cols[6].write(tr("Move Down"))
+
+        # Rows
+        for i, seg in enumerate(segments):
+            row_cols = st.columns([0.6, 3.0, 1.0, 1.0, 1.0, 0.8, 0.8])
+            row_cols[0].markdown(f"**{seg.get('order', i+1)}**")
+            row_cols[1].markdown(os.path.basename(str(seg.get("material", ""))))
+            row_cols[2].markdown(f"{float(seg.get('start', 0.0)):.2f}")
+            row_cols[3].markdown(f"{float(seg.get('end', 0.0)):.2f}")
+            new_dur = row_cols[4].number_input(
+                tr("Duration(s)"),
+                min_value=0.6,
+                max_value=60.0,
+                value=float(seg.get("duration", 1.0)),
+                step=0.1,
+                key=f"seg_dur_{i}",
+            )
+            seg["duration"] = float(new_dur)
+            if row_cols[5].button(tr("Move Up"), key=f"seg_up_{i}") and i > 0:
+                segments[i - 1], segments[i] = segments[i], segments[i - 1]
+                segments = normalize_orders(segments)
+                st.session_state["segments"] = segments
+                st.rerun()
+            if row_cols[6].button(tr("Move Down"), key=f"seg_down_{i}") and i < len(segments) - 1:
+                segments[i + 1], segments[i] = segments[i], segments[i + 1]
+                segments = normalize_orders(segments)
+                st.session_state["segments"] = segments
+                st.rerun()
+
+        # Save changes button
+        if st.button(tr("Apply Changes")):
+            st.session_state["segments"] = normalize_orders(segments)
+            # persist to segments.json for the task
+            try:
+                task_id = st.session_state.get("segment_task_id")
+                to_save = [SegmentItem(**s) for s in st.session_state["segments"]]
+                video_service.save_segments(task_id, to_save)
+            except Exception:
+                pass
+            st.success(tr("Segments Planned"))
+
+        # Preview and render controls
+        preview_cols = st.columns([1, 1, 2])
+        preview_count = preview_cols[0].number_input(tr("Preview Segments Count"), min_value=1, max_value=len(segments), value=min(3, len(segments)), step=1)
+        do_preview = preview_cols[1].button(tr("Preview"))
+        do_render = preview_cols[2].button(tr("Render From Segments"))
+
+        if (do_preview or do_render) and not st.session_state.get("segment_task_id"):
+            st.error(tr("Segments not ready"))
+        elif do_preview or do_render:
+            task_id = st.session_state.get("segment_task_id")
+            audio_file = st.session_state.get("audio_file", "")
+            subtitle_path = st.session_state.get("subtitle_path", "")
+            if not audio_file:
+                st.error(tr("Video Generation Failed"))
+                st.stop()
+
+            use_segments = segments[:preview_count] if do_preview else segments
+
+            # Convert to SegmentItem list
+            seg_objs = []
+            for s in use_segments:
+                try:
+                    seg_objs.append(SegmentItem(**s))
+                except Exception:
+                    # minimal mapping
+                    seg_objs.append(
+                        SegmentItem(
+                            segment_id=str(s.get("segment_id", f"seg-{s.get('order', 1)}")),
+                            order=int(s.get("order", 1)),
+                            scene_title=s.get("scene_title", ""),
+                            shot_no=s.get("shot_no", None),
+                            shot_desc=s.get("shot_desc", ""),
+                            style=s.get("style", ""),
+                            duration=float(s.get("duration", 1.0)),
+                            transition=s.get("transition", None),
+                            speed=float(s.get("speed", 1.0)),
+                            fit=s.get("fit", "contain"),
+                            material=str(s.get("material")),
+                            start=float(s.get("start", 0.0)),
+                            end=float(s.get("end", 0.0)),
+                            width=s.get("width", None),
+                            height=s.get("height", None),
+                        )
+                    )
+
+            with st.spinner(tr("Generating Video")):
+                combined, final = video_service.render_from_segments(
+                    task_id=task_id,
+                    segments=seg_objs,
+                    params=params,
+                    audio_file=audio_file,
+                    subtitle_path=subtitle_path,
+                )
+            if final:
+                st.video(final)
+            else:
+                st.error(tr("Video Generation Failed"))

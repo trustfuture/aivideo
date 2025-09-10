@@ -300,6 +300,31 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
 
     sm.state.update_task(task_id, state=const.TASK_STATE_PROCESSING, progress=50)
 
+    # segments planning only (new)
+    if stop_at == "segments":
+        from app.services import video as video_service
+
+        segments = video_service.plan_segments(
+            task_id=task_id,
+            video_paths=downloaded_videos,
+            audio_file=audio_file,
+            video_aspect=params.video_aspect,
+            video_concat_mode=params.video_concat_mode,
+            max_clip_duration=params.video_clip_duration,
+        )
+        kwargs = {
+            "script": video_script,
+            "terms": video_terms,
+            "audio_file": audio_file,
+            "audio_duration": audio_duration,
+            "materials": downloaded_videos,
+            "segments": [s.__dict__ if hasattr(s, "__dict__") else s for s in segments],
+        }
+        sm.state.update_task(
+            task_id, state=const.TASK_STATE_COMPLETE, progress=100, **kwargs
+        )
+        return kwargs
+
     # 6. Generate final videos
     final_video_paths, combined_video_paths = generate_final_videos(
         task_id, params, downloaded_videos, audio_file, subtitle_path

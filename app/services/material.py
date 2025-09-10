@@ -79,6 +79,11 @@ def search_videos_pexels(
                     item.provider = "pexels"
                     item.url = video["link"]
                     item.duration = duration
+                    try:
+                        # pexels video object includes a preview image
+                        item.thumb = v.get("image", "")
+                    except Exception:
+                        pass
                     video_items.append(item)
                     break
         return video_items
@@ -135,6 +140,15 @@ def search_videos_pixabay(
                     item.provider = "pixabay"
                     item.url = video["url"]
                     item.duration = duration
+                    try:
+                        # try best-effort thumbnail
+                        item.thumb = v.get("userImageURL", "")
+                        if not item.thumb:
+                            pid = str(v.get("picture_id", ""))
+                            if pid:
+                                item.thumb = f"https://i.vimeocdn.com/video/{pid}_640x360.jpg"
+                    except Exception:
+                        pass
                     video_items.append(item)
                     break
         return video_items

@@ -4,7 +4,7 @@ import os
 import random
 import gc
 import shutil
-from typing import List
+from typing import List, Iterable
 from loguru import logger
 from moviepy import (
     AudioFileClip,
@@ -18,7 +18,7 @@ from moviepy import (
     concatenate_videoclips,
 )
 from moviepy.video.tools.subtitles import SubtitlesClip
-from PIL import ImageFont
+from PIL import ImageFont, Image, ImageDraw
 
 from app.models import const
 from app.models.schema import (
@@ -27,6 +27,7 @@ from app.models.schema import (
     VideoConcatMode,
     VideoParams,
     VideoTransitionMode,
+    SegmentItem,
 )
 from app.services.utils import video_effects
 from app.utils import utils
@@ -114,6 +115,553 @@ def get_bgm_file(bgm_type: str = "random", bgm_file: str = ""):
     return ""
 
 
+def _task_output_dir(task_id: str) -> str:
+    return os.path.join(utils.task_dir(task_id))
+
+
+def _clips_dir(task_id: str) -> str:
+    d = os.path.join(utils.task_dir(task_id), "clips")
+    if not os.path.exists(d):
+        os.makedirs(d, exist_ok=True)
+    return d
+
+
+def save_segments(task_id: str, segments: List[SegmentItem]):
+    """Persist segments plan to storage/tasks/<task_id>/segments.json"""
+    output_dir = utils.task_dir(task_id)
+    os.makedirs(output_dir, exist_ok=True)
+    file_path = os.path.join(output_dir, "segments.json")
+    import json
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump([s.model_dump() if isinstance(s, SegmentItem) else s for s in segments], f, ensure_ascii=False, indent=2)
+    return file_path
+
+
+def load_segments(task_id: str) -> List[SegmentItem]:
+    file_path = os.path.join(utils.task_dir(task_id), "segments.json")
+    if not os.path.exists(file_path):
+        return []
+    import json
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+        res = []
+        for item in data:
+            try:
+                res.append(SegmentItem(**item))
+            except Exception:
+                # fallback to raw dict if structure mismatched
+                res.append(item)
+        return res
+
+
+def _thumbs_dir(task_id: str) -> str:
+    d = os.path.join(utils.task_dir(task_id), "thumbs")
+    if not os.path.exists(d):
+        os.makedirs(d, exist_ok=True)
+    return d
+
+
+def get_segment_thumbnail(task_id: str, segment_id: str) -> str:
+    """Ensure and return a thumbnail image path for a segment.
+
+    Returns absolute filesystem path to an image file.
+    """
+    segments = load_segments(task_id)
+    seg = None
+    for s in segments:
+        try:
+            if isinstance(s, SegmentItem) and s.segment_id == segment_id:
+                seg = s
+                break
+            if not isinstance(s, SegmentItem) and s.get("segment_id") == segment_id:
+                # tolerate raw dict
+                seg = SegmentItem(**s)
+                break
+        except Exception:
+            continue
+
+    if seg is None:
+        raise FileNotFoundError("segment not found")
+
+    material = getattr(seg, "material", None)
+    if not material or not isinstance(material, str) or not os.path.exists(material):
+        # Fallback: try to capture from combined/final video at timeline offset
+        output_dir = utils.task_dir(task_id)
+        import glob as _glob
+        cand = []
+        cand.extend(_glob.glob(os.path.join(output_dir, "combined-*.mp4")))
+        cand.extend(_glob.glob(os.path.join(output_dir, "final-*.mp4")))
+        if cand:
+            try:
+                # estimate position by summing durations before this segment
+                segs = load_segments(task_id)
+                pos = 0.0
+                for s in segs:
+                    sid = s.segment_id if hasattr(s, 'segment_id') else s.get('segment_id')
+                    if sid == segment_id:
+                        break
+                    try:
+                        pos += float(getattr(s, 'duration', 0) if hasattr(s, 'duration') else s.get('duration', 0) or 0)
+                    except Exception:
+                        continue
+                vid = cand[0]
+                clip = VideoFileClip(vid)
+                t = max(0.0, min(pos + 0.05, float(clip.duration) - 0.01))
+                frame = clip.get_frame(t)
+                img = Image.fromarray(frame)
+                img.thumbnail((640, 640))
+                thumb_dir = _thumbs_dir(task_id)
+                thumb_path = os.path.join(thumb_dir, f"{segment_id}.jpg")
+                img.save(thumb_path, format="JPEG", quality=80)
+                close_clip(clip)
+                return thumb_path
+            except Exception:
+                try:
+                    close_clip(clip)
+                except Exception:
+                    pass
+        # If still no source, return a generated placeholder to avoid 404
+        thumb_dir = _thumbs_dir(task_id)
+        thumb_path = os.path.join(thumb_dir, f"{segment_id}.jpg")
+        try:
+            img = Image.new('RGB', (640, 360), color=(240, 240, 240))
+            draw = ImageDraw.Draw(img)
+            text = "No Material"
+            try:
+                fpath = os.path.join(utils.font_dir(), "MicrosoftYaHeiBold.ttc")
+                font = ImageFont.truetype(fpath, 28)
+            except Exception:
+                font = ImageFont.load_default()
+            tw, th = draw.textsize(text, font=font)
+            draw.text(((640 - tw)//2, (360 - th)//2), text, fill=(128, 128, 128), font=font)
+            img.save(thumb_path, format="JPEG", quality=80)
+            return thumb_path
+        except Exception:
+            raise FileNotFoundError("material not found")
+
+    # if material is an image, return it directly
+    ext = os.path.splitext(material)[1].lower()
+    image_exts = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+    if ext in image_exts:
+        return material
+
+    # otherwise capture a middle frame from video as thumbnail
+    thumb_dir = _thumbs_dir(task_id)
+    thumb_path = os.path.join(thumb_dir, f"{segment_id}.jpg")
+    if os.path.exists(thumb_path):
+        return thumb_path
+
+    # pick a timestamp within the segment range
+    try:
+        cap_t = float(getattr(seg, "start", 0) or 0)
+        dur = float(getattr(seg, "duration", 0) or 0)
+        if dur and dur > 0:
+            cap_t = cap_t + max(0.05, min(dur * 0.5, dur - 0.05))
+        else:
+            # fallback to 0.2s
+            cap_t = cap_t + 0.2
+    except Exception:
+        cap_t = 0.2
+
+    try:
+        clip = VideoFileClip(material)
+        t = max(0.0, min(cap_t, float(clip.duration) - 0.01))
+        frame = clip.get_frame(t)
+        img = Image.fromarray(frame)
+        img.thumbnail((640, 640))
+        img.save(thumb_path, format="JPEG", quality=80)
+        close_clip(clip)
+        return thumb_path
+    except Exception as e:
+        try:
+            close_clip(clip)
+        except Exception:
+            pass
+        raise e
+
+
+def ensure_thumbs(task_id: str):
+    """Generate thumbnails for all segments of the task if missing."""
+    try:
+        segs = load_segments(task_id)
+        for s in segs:
+            try:
+                seg_id = s.segment_id if hasattr(s, 'segment_id') else s.get('segment_id')
+                if seg_id:
+                    _ = get_segment_thumbnail(task_id, seg_id)
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
+def plan_segments(
+    task_id: str,
+    video_paths: List[str],
+    audio_file: str,
+    video_aspect: VideoAspect = VideoAspect.portrait,
+    video_concat_mode: VideoConcatMode = VideoConcatMode.random,
+    max_clip_duration: int = 5,
+) -> List[SegmentItem]:
+    """Create a segment plan based on materials and audio length.
+
+    - Slices each source video into <= max_clip_duration chunks.
+    - Shuffles when concat mode is random, otherwise keeps order.
+    - Loops segments until total >= audio duration.
+    """
+    audio_clip = AudioFileClip(audio_file)
+    audio_duration = float(audio_clip.duration)
+    close_clip(audio_clip)
+
+    segments_all: List[SegmentItem] = []
+    order = 1
+
+    # pre-scan all materials and form base segments list
+    for src in video_paths:
+        try:
+            clip = VideoFileClip(src)
+        except Exception:
+            # skip invalid video
+            continue
+        clip_duration = float(clip.duration)
+        clip_w, clip_h = clip.size
+        close_clip(clip)
+
+        start_time = 0.0
+        min_piece = min(max_clip_duration, clip_duration)
+
+        # at least one piece per video
+        while start_time < clip_duration:
+            end_time = min(start_time + max_clip_duration, clip_duration)
+            dur = float(max(0.0, end_time - start_time))
+            # drop too tiny tail pieces (<0.6s)
+            if dur >= 0.6:
+                segments_all.append(
+                    SegmentItem(
+                        segment_id=f"seg-{order}",
+                        order=order,
+                        scene_title="",
+                        shot_no=None,
+                        shot_desc="",
+                        style="",
+                        duration=dur,
+                        transition=None,
+                        speed=1.0,
+                        fit="contain",
+                        material=src,
+                        start=float(start_time),
+                        end=float(end_time),
+                        width=int(clip_w),
+                        height=int(clip_h),
+                    )
+                )
+                order += 1
+            if video_concat_mode.value == VideoConcatMode.sequential.value:
+                # only one sub-clip from each video in sequential mode
+                break
+            start_time = end_time
+
+    if not segments_all:
+        logger.warning("plan_segments: no valid segments found from sources")
+        return []
+
+    # shuffle for random mode
+    if video_concat_mode.value == VideoConcatMode.random.value:
+        random.shuffle(segments_all)
+
+    # loop base segments to fill audio duration
+    planned: List[SegmentItem] = []
+    total = 0.0
+    base: List[SegmentItem] = segments_all.copy()
+    idx = 0
+    while total < audio_duration and base:
+        if idx >= len(base):
+            idx = 0
+        base_seg = base[idx]
+        # create a copy with new order and id to reflect timeline position
+        new_seg = SegmentItem(
+            segment_id=f"seg-{len(planned)+1}",
+            order=len(planned) + 1,
+            scene_title=base_seg.scene_title,
+            shot_no=base_seg.shot_no,
+            shot_desc=base_seg.shot_desc,
+            style=base_seg.style,
+            duration=min(base_seg.duration, max_clip_duration),
+            transition=base_seg.transition,
+            speed=base_seg.speed,
+            fit=base_seg.fit,
+            material=base_seg.material,
+            start=base_seg.start,
+            end=base_seg.start + min(base_seg.duration, max_clip_duration),
+            width=base_seg.width,
+            height=base_seg.height,
+        )
+        planned.append(new_seg)
+        total += new_seg.duration
+        idx += 1
+
+    save_segments(task_id, planned)
+    return planned
+
+
+def _apply_transition_to_clip(clip, transition: VideoTransitionMode, t: float = 1.0, side: str | None = None):
+    shuffle_side = side or random.choice(["left", "right", "top", "bottom"])
+    if transition is None or transition.value == VideoTransitionMode.none.value:
+        return clip
+    if transition.value == VideoTransitionMode.fade_in.value:
+        return video_effects.fadein_transition(clip, max(0.1, float(t)))
+    if transition.value == VideoTransitionMode.fade_out.value:
+        return video_effects.fadeout_transition(clip, max(0.1, float(t)))
+    if transition.value == VideoTransitionMode.slide_in.value:
+        return video_effects.slidein_transition(clip, max(0.1, float(t)), shuffle_side)
+    if transition.value == VideoTransitionMode.slide_out.value:
+        return video_effects.slideout_transition(clip, max(0.1, float(t)), shuffle_side)
+    if transition.value == VideoTransitionMode.mask.value:
+        # approximate mask transitions using existing effects
+        # circle -> fadein; horizontal/vertical -> slide from given side; blinds -> fadein
+        if side is None:
+            side = "left"
+        return _apply_transition_to_clip(clip, VideoTransitionMode.fade_in, t=t, side=side)
+    if transition.value == VideoTransitionMode.shuffle.value:
+        transition_funcs = [
+            lambda c: video_effects.fadein_transition(c, max(0.1, float(t))),
+            lambda c: video_effects.fadeout_transition(c, max(0.1, float(t))),
+            lambda c: video_effects.slidein_transition(c, max(0.1, float(t)), shuffle_side),
+            lambda c: video_effects.slideout_transition(c, max(0.1, float(t)), shuffle_side),
+        ]
+        func = random.choice(transition_funcs)
+        return func(clip)
+    return clip
+
+
+def _resize_to_aspect(clip, video_width: int, video_height: int, fit: str = "contain"):
+    clip_w, clip_h = clip.size
+    if clip_w == video_width and clip_h == video_height:
+        return clip
+    clip_ratio = clip_w / clip_h
+    video_ratio = video_width / video_height
+    # exact match
+    if clip_ratio == video_ratio:
+        return clip.resized(new_size=(video_width, video_height))
+
+    # center without scaling
+    if fit == "center":
+        background = ColorClip(size=(video_width, video_height), color=(0, 0, 0)).with_duration(clip.duration)
+        return CompositeVideoClip([background, clip.with_position("center")])
+
+    # contain: fit inside, keep black borders
+    if fit == "contain":
+        if clip_ratio > video_ratio:
+            scale_factor = video_width / clip_w
+        else:
+            scale_factor = video_height / clip_h
+        new_width = int(clip_w * scale_factor)
+        new_height = int(clip_h * scale_factor)
+        background = ColorClip(size=(video_width, video_height), color=(0, 0, 0)).with_duration(clip.duration)
+        clip_resized = clip.resized(new_size=(new_width, new_height)).with_position("center")
+        return CompositeVideoClip([background, clip_resized])
+
+    # cover: fill and crop overflow
+    if fit == "cover":
+        if clip_ratio > video_ratio:
+            scale_factor = video_height / clip_h
+        else:
+            scale_factor = video_width / clip_w
+        new_width = int(clip_w * scale_factor)
+        new_height = int(clip_h * scale_factor)
+        background = ColorClip(size=(video_width, video_height), color=(0, 0, 0)).with_duration(clip.duration)
+        clip_resized = clip.resized(new_size=(new_width, new_height)).with_position("center")
+        return CompositeVideoClip([background, clip_resized])
+
+    # fallback to contain
+    if clip_ratio > video_ratio:
+        scale_factor = video_width / clip_w
+    else:
+        scale_factor = video_height / clip_h
+    new_width = int(clip_w * scale_factor)
+    new_height = int(clip_h * scale_factor)
+    background = ColorClip(size=(video_width, video_height), color=(0, 0, 0)).with_duration(clip.duration)
+    clip_resized = clip.resized(new_size=(new_width, new_height)).with_position("center")
+    return CompositeVideoClip([background, clip_resized])
+
+
+def _merge_clip_files(progressed_files: Iterable[str], output_dir: str, threads: int = 2) -> str:
+    progressed_files = list(progressed_files)
+    if not progressed_files:
+        return ""
+    if len(progressed_files) == 1:
+        dst = os.path.join(output_dir, "temp-merged-video.mp4")
+        shutil.copy(progressed_files[0], dst)
+        return dst
+
+    temp_merged_video = os.path.join(output_dir, "temp-merged-video.mp4")
+    temp_merged_next = os.path.join(output_dir, "temp-merged-next.mp4")
+    shutil.copy(progressed_files[0], temp_merged_video)
+    for i, f in enumerate(progressed_files[1:], 1):
+        try:
+            base_clip = VideoFileClip(temp_merged_video)
+            next_clip = VideoFileClip(f)
+            merged_clip = concatenate_videoclips([base_clip, next_clip])
+            merged_clip.write_videofile(
+                filename=temp_merged_next,
+                threads=threads,
+                logger=None,
+                temp_audiofile_path=output_dir,
+                audio_codec=audio_codec,
+                fps=fps,
+            )
+            close_clip(base_clip)
+            close_clip(next_clip)
+            close_clip(merged_clip)
+            delete_files(temp_merged_video)
+            os.rename(temp_merged_next, temp_merged_video)
+        except Exception as e:
+            logger.error(f"failed to merge clip: {str(e)}")
+            continue
+    return temp_merged_video
+
+
+def render_from_segments(
+    task_id: str,
+    segments: List[SegmentItem],
+    params: VideoParams,
+    audio_file: str,
+    subtitle_path: str = "",
+    preview: bool = False,
+    preview_label: str | None = None,
+) -> (str, str):
+    """Bake each segment, progressively merge, then overlay audio/subtitle.
+
+    Returns: (combined_video_path, final_video_path)
+    """
+    output_dir = _task_output_dir(task_id)
+    clips_dir = _clips_dir(task_id)
+
+    aspect = VideoAspect(params.video_aspect)
+    video_width, video_height = aspect.to_resolution()
+
+    baked_files: List[str] = []
+    for i, s in enumerate(sorted(segments, key=lambda x: x.order)):
+        try:
+            base_clip = VideoFileClip(s.material).subclipped(s.start, s.end).without_audio()
+        except Exception as e:
+            logger.error(f"failed to open source clip: {s.material}, err: {str(e)}")
+            continue
+
+        # apply playback speed (clamped)
+        try:
+            spd = float(s.speed or 1.0)
+        except Exception:
+            spd = 1.0
+        if spd != 1.0:
+            # clamp to reasonable bounds
+            if spd < 0.75:
+                spd = 0.75
+            if spd > 1.25:
+                spd = 1.25
+            try:
+                from moviepy import vfx
+                base_clip = base_clip.with_effects([vfx.MultiplySpeed(spd)])
+            except Exception:
+                try:
+                    from moviepy import vfx as _vfx
+                    # fallback to alternative naming if available
+                    base_clip = base_clip.with_effects([_vfx.Speedx(spd)])
+                except Exception:
+                    logger.warning("speed effect not supported by current moviepy, skipping")
+
+        # resize to aspect with fit mode
+        fit = getattr(s, "fit", None) or "contain"
+        clip = _resize_to_aspect(base_clip, video_width, video_height, fit)
+
+        # apply transition (fallback to global param if empty)
+        trans = None
+        try:
+            if s.transition:
+                trans = VideoTransitionMode(s.transition)
+            elif params.video_transition_mode:
+                trans = VideoTransitionMode(params.video_transition_mode)
+        except Exception:
+            trans = None
+        if trans:
+            try:
+                t = float(getattr(s, "transition_duration", None) or 1.0)
+            except Exception:
+                t = 1.0
+            if t < 0.2:
+                t = 0.2
+            if t > 2:
+                t = 2
+            side = getattr(s, "transition_direction", None)
+            # map mask type to direction if not set
+            if (getattr(trans, 'value', None) == VideoTransitionMode.mask.value) and not side:
+                m = getattr(s, "transition_mask", None)
+                if m == "vertical":
+                    side = random.choice(["top", "bottom"])  # default vertical
+                elif m == "horizontal":
+                    side = random.choice(["left", "right"])  # default horizontal
+                else:
+                    side = None
+            if isinstance(side, str) and side not in ["left", "right", "top", "bottom"]:
+                side = None
+            clip = _apply_transition_to_clip(clip, trans, t=t, side=side)
+
+        # trim to declared duration if needed
+        if clip.duration > s.duration:
+            clip = clip.subclipped(0, s.duration)
+
+        # write baked file
+        clip_file = os.path.join(clips_dir, f"seg-{i+1}.mp4")
+        try:
+            clip.write_videofile(clip_file, logger=None, fps=fps, codec=video_codec)
+            baked_files.append(clip_file)
+        except Exception as e:
+            logger.error(f"failed to write baked clip: {str(e)}")
+        finally:
+            close_clip(base_clip)
+            if clip is not base_clip:
+                close_clip(clip)
+
+    if not baked_files:
+        logger.warning("no baked files to merge")
+        return "", ""
+
+    # merge baked clips progressively
+    merged_tmp = _merge_clip_files(baked_files, output_dir, params.n_threads or 2)
+    if not merged_tmp or not os.path.exists(merged_tmp):
+        logger.error("merge failed")
+        return "", ""
+
+    # move to combined path (use dedicated preview filename when previewing)
+    if preview:
+        tag = preview_label or "preview"
+        # normalize tag to filesystem-friendly
+        import re, time
+        tag = re.sub(r"[^a-zA-Z0-9_-]", "-", str(tag))[:40] or str(int(time.time()))
+        combined_video_path = os.path.join(output_dir, f"preview-{tag}.mp4")
+    else:
+        combined_video_path = os.path.join(output_dir, "combined-1.mp4")
+    if os.path.exists(combined_video_path):
+        delete_files(combined_video_path)
+    os.rename(merged_tmp, combined_video_path)
+
+    # overlay audio and subtitle to final output
+    if preview:
+        # In preview mode, return combined only and skip final mux to speed up
+        return combined_video_path, ""
+    else:
+        final_video_path = os.path.join(output_dir, "final-1.mp4")
+        generate_video(
+            video_path=combined_video_path,
+            audio_path=audio_file,
+            subtitle_path=subtitle_path,
+            output_file=final_video_path,
+            params=params,
+        )
+        return combined_video_path, final_video_path
+
 def combine_videos(
     combined_video_path: str,
     video_paths: List[str],
@@ -124,6 +672,17 @@ def combine_videos(
     max_clip_duration: int = 5,
     threads: int = 2,
 ) -> str:
+    # normalize enums if strings are passed in
+    try:
+        if isinstance(video_concat_mode, str):
+            video_concat_mode = VideoConcatMode(video_concat_mode)
+    except Exception:
+        pass
+    try:
+        if isinstance(video_transition_mode, str):
+            video_transition_mode = VideoTransitionMode(video_transition_mode)
+    except Exception:
+        video_transition_mode = None
     audio_clip = AudioFileClip(audio_file)
     audio_duration = audio_clip.duration
     logger.info(f"audio duration: {audio_duration} seconds")
@@ -148,10 +707,19 @@ def combine_videos(
         start_time = 0
 
         while start_time < clip_duration:
-            end_time = min(start_time + max_clip_duration, clip_duration)            
-            if clip_duration - start_time >= max_clip_duration:
-                subclipped_items.append(SubClippedVideoClip(file_path= video_path, start_time=start_time, end_time=end_time, width=clip_w, height=clip_h))
-            start_time = end_time    
+            end_time = min(start_time + max_clip_duration, clip_duration)
+            # accept even short tails; don't drop clips shorter than max_clip_duration
+            if end_time - start_time > 0:
+                subclipped_items.append(
+                    SubClippedVideoClip(
+                        file_path=video_path,
+                        start_time=start_time,
+                        end_time=end_time,
+                        width=clip_w,
+                        height=clip_h,
+                    )
+                )
+            start_time = end_time
             if video_concat_mode.value == VideoConcatMode.sequential.value:
                 break
 
@@ -194,17 +762,19 @@ def combine_videos(
                     clip = CompositeVideoClip([background, clip_resized])
                     
             shuffle_side = random.choice(["left", "right", "top", "bottom"])
-            if video_transition_mode.value == VideoTransitionMode.none.value:
-                clip = clip
-            elif video_transition_mode.value == VideoTransitionMode.fade_in.value:
+            # normalize transition mode; treat None or falsy as no transition
+            _vt = getattr(video_transition_mode, "value", video_transition_mode)
+            if not _vt:
+                pass  # no transition
+            elif _vt == VideoTransitionMode.fade_in.value:
                 clip = video_effects.fadein_transition(clip, 1)
-            elif video_transition_mode.value == VideoTransitionMode.fade_out.value:
+            elif _vt == VideoTransitionMode.fade_out.value:
                 clip = video_effects.fadeout_transition(clip, 1)
-            elif video_transition_mode.value == VideoTransitionMode.slide_in.value:
+            elif _vt == VideoTransitionMode.slide_in.value:
                 clip = video_effects.slidein_transition(clip, 1, shuffle_side)
-            elif video_transition_mode.value == VideoTransitionMode.slide_out.value:
+            elif _vt == VideoTransitionMode.slide_out.value:
                 clip = video_effects.slideout_transition(clip, 1, shuffle_side)
-            elif video_transition_mode.value == VideoTransitionMode.shuffle.value:
+            elif _vt == VideoTransitionMode.shuffle.value:
                 transition_funcs = [
                     lambda c: video_effects.fadein_transition(c, 1),
                     lambda c: video_effects.fadeout_transition(c, 1),
@@ -243,14 +813,15 @@ def combine_videos(
     # merge video clips progressively, avoid loading all videos at once to avoid memory overflow
     logger.info("starting clip merging process")
     if not processed_clips:
-        logger.warning("no clips available for merging")
-        return combined_video_path
+        logger.error("no clips available for merging; ensure materials are valid and readable")
+        raise ValueError("no clips available for merging")
     
     # if there is only one clip, use it directly
     if len(processed_clips) == 1:
         logger.info("using single clip directly")
         shutil.copy(processed_clips[0].file_path, combined_video_path)
-        delete_files(processed_clips)
+        # clean up temp single clip
+        delete_files(processed_clips[0].file_path)
         logger.info("video combining completed")
         return combined_video_path
     
@@ -367,6 +938,10 @@ def generate_video(
     output_file: str,
     params: VideoParams,
 ):
+    # Validate input video exists and is non-empty before proceeding
+    if not os.path.exists(video_path) or os.path.getsize(video_path) == 0:
+        raise ValueError(f"invalid input video for rendering: {video_path}")
+
     aspect = VideoAspect(params.video_aspect)
     video_width, video_height = aspect.to_resolution()
 
@@ -452,7 +1027,17 @@ def generate_video(
             subtitles=subtitle_path, encoding="utf-8", make_textclip=make_textclip
         )
         text_clips = []
+        # global subtitle time shift (can be negative)
+        try:
+            shift = float(getattr(params, "subtitle_offset", 0.0) or 0.0)
+        except Exception:
+            shift = 0.0
         for item in sub.subtitles:
+            if shift != 0:
+                try:
+                    item = ((item[0][0] + shift, item[0][1] + shift), item[1])
+                except Exception:
+                    pass
             clip = create_text_clip(subtitle_item=item)
             text_clips.append(clip)
         video_clip = CompositeVideoClip([video_clip, *text_clips])
@@ -460,13 +1045,29 @@ def generate_video(
     bgm_file = get_bgm_file(bgm_type=params.bgm_type, bgm_file=params.bgm_file)
     if bgm_file:
         try:
-            bgm_clip = AudioFileClip(bgm_file).with_effects(
-                [
-                    afx.MultiplyVolume(params.bgm_volume),
-                    afx.AudioFadeOut(3),
-                    afx.AudioLoop(duration=video_clip.duration),
-                ]
-            )
+            effects = [afx.MultiplyVolume(params.bgm_volume)]
+            # optional fade in/out controls
+            try:
+                fi = float(getattr(params, "bgm_fade_in_sec", 0.0) or 0.0)
+            except Exception:
+                fi = 0.0
+            try:
+                fo = float(getattr(params, "bgm_fade_out_sec", 3.0) or 0.0)
+            except Exception:
+                fo = 0.0
+            if fi > 0:
+                effects.append(afx.AudioFadeIn(fi))
+            if fo > 0:
+                effects.append(afx.AudioFadeOut(fo))
+            # loop to match duration
+            effects.append(afx.AudioLoop(duration=video_clip.duration))
+            # simple ducking: apply additional volume reduction when enabled
+            try:
+                if bool(getattr(params, "bgm_ducking", False)):
+                    effects.append(afx.MultiplyVolume(0.6))
+            except Exception:
+                pass
+            bgm_clip = AudioFileClip(bgm_file).with_effects(effects)
             audio_clip = CompositeAudioClip([audio_clip, bgm_clip])
         except Exception as e:
             logger.error(f"failed to add bgm: {str(e)}")

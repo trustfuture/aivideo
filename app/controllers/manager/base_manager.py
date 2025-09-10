@@ -1,5 +1,12 @@
 import threading
 from typing import Any, Callable, Dict
+import traceback
+
+from loguru import logger
+
+# Late import to avoid circulars at module import time
+from app.models import const
+from app.services import state as sm
 
 
 class TaskManager:
@@ -34,6 +41,21 @@ class TaskManager:
             with self.lock:
                 self.current_tasks += 1
             func(*args, **kwargs)  # call the function here, passing *args and **kwargs.
+        except Exception as e:
+            # Ensure failures are reflected in task state so UI can react
+            task_id = kwargs.get("task_id") if isinstance(kwargs, dict) else None
+            tb = traceback.format_exc()
+            logger.error(f"Task {getattr(func, '__name__', str(func))} crashed: {e}\n{tb}")
+            if task_id:
+                try:
+                    sm.state.update_task(
+                        task_id,
+                        state=const.TASK_STATE_FAILED,
+                        progress=100,
+                        error=str(e),
+                    )
+                except Exception as inner:
+                    logger.error(f"Failed to update task state for {task_id}: {inner}")
         finally:
             self.task_done()
 

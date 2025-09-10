@@ -42,13 +42,17 @@ class MemoryState(BaseState):
         progress = int(progress)
         if progress > 100:
             progress = 100
-
-        self._tasks[task_id] = {
+        # Merge with existing task state instead of overwriting,
+        # to keep previously stored fields like audio_file, params, etc.
+        prev = self._tasks.get(task_id, {})
+        merged = {
+            **prev,
             "task_id": task_id,
             "state": state,
             "progress": progress,
             **kwargs,
         }
+        self._tasks[task_id] = merged
 
     def get_task(self, task_id: str):
         return self._tasks.get(task_id, None)

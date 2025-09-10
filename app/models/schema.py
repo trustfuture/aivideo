@@ -25,6 +25,7 @@ class VideoTransitionMode(str, Enum):
     fade_out = "FadeOut"
     slide_in = "SlideIn"
     slide_out = "SlideOut"
+    mask = "Mask"
 
 
 class VideoAspect(str, Enum):
@@ -51,6 +52,7 @@ class MaterialInfo:
     provider: str = "pexels"
     url: str = ""
     duration: int = 0
+    thumb: str = ""
 
 
 class VideoParams(BaseModel):
@@ -90,10 +92,15 @@ class VideoParams(BaseModel):
     bgm_type: Optional[str] = "random"
     bgm_file: Optional[str] = ""
     bgm_volume: Optional[float] = 0.2
+    # P1: audio/subtitle enhancements
+    bgm_fade_in_sec: Optional[float] = 0.0
+    bgm_fade_out_sec: Optional[float] = 3.0
+    bgm_ducking: Optional[bool] = False
 
     subtitle_enabled: Optional[bool] = True
     subtitle_position: Optional[str] = "bottom"  # top, bottom, center
     custom_position: float = 70.0
+    subtitle_offset: float = 0.0  # shift subtitle timeline by seconds (can be negative)
     font_name: Optional[str] = "STHeitiMedium.ttc"
     text_fore_color: Optional[str] = "#FFFFFF"
     text_background_color: Union[bool, str] = True
@@ -103,6 +110,113 @@ class VideoParams(BaseModel):
     stroke_width: float = 1.5
     n_threads: Optional[int] = 2
     paragraph_number: Optional[int] = 1
+
+
+class SegmentItem(BaseModel):
+    segment_id: str
+    order: int
+    scene_title: Optional[str] = ""
+    shot_no: Optional[int] = None
+    shot_desc: Optional[str] = ""
+    style: Optional[str] = ""
+    # duration of this segment in seconds
+    duration: float
+    # transition name, follow VideoTransitionMode values; None means inherit/global
+    transition: Optional[str] = None
+    # transition parameters
+    transition_duration: Optional[float] = None  # seconds
+    transition_direction: Optional[str] = None   # left|right|top|bottom
+    transition_mask: Optional[str] = None        # reserved for mask transitions
+    # playback speed, 1.0 means normal speed
+    speed: Optional[float] = 1.0
+    # resize fit mode: contain|cover (currently only contain is used by renderer)
+    fit: Optional[str] = "contain"
+    # material source absolute path
+    material: str
+    # source in/out points (in seconds)
+    start: float
+    end: float
+    # optional source dimension hints
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+
+class SegmentsPlanRequest(VideoParams, BaseModel):
+    pass
+
+
+class SegmentsPlanResponse(BaseModel):
+    status: int = 200
+    message: Optional[str] = "success"
+
+    class Data(BaseModel):
+        task_id: str
+        segments: List[SegmentItem]
+
+    data: Data
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": 200,
+                "message": "success",
+                "data": {
+                    "task_id": "123e4567",
+                    "segments": [
+                        {
+                            "segment_id": "s1",
+                            "order": 1,
+                            "scene_title": "开头",
+                            "shot_no": 1,
+                            "shot_desc": "点名受众",
+                            "style": "口播",
+                            "duration": 1.5,
+                            "transition": "FadeIn",
+                            "speed": 1.0,
+                            "fit": "contain",
+                            "material": "/path/material1.mp4",
+                            "start": 0,
+                            "end": 1.5,
+                            "width": 1920,
+                            "height": 1080,
+                        }
+                    ],
+                },
+            }
+        }
+
+
+class SegmentsRenderRequest(BaseModel):
+    task_id: str
+    segments: List[SegmentItem]
+    params: Optional[VideoParams] = None
+    # preview mode: when true, server writes to preview file and may skip final output
+    preview: Optional[bool] = False
+
+
+class SegmentsRenderResponse(BaseModel):
+    status: int = 200
+    message: Optional[str] = "success"
+
+    class Data(BaseModel):
+        task_id: str
+        combined_video: str
+        final_video: str
+
+    data: Data
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": 200,
+                "message": "success",
+                "data": {
+                    "task_id": "123e4567",
+                    "combined_video": "http://127.0.0.1:8080/tasks/123e4567/combined-1.mp4",
+                    "final_video": "http://127.0.0.1:8080/tasks/123e4567/final-1.mp4",
+                },
+            }
+        }
 
 
 class SubtitleRequest(BaseModel):

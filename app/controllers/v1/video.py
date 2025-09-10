@@ -19,6 +19,10 @@ from app.models.schema import (
     AudioRequest,
     BgmRetrieveResponse,
     BgmUploadResponse,
+    SegmentsPlanRequest,
+    SegmentsPlanResponse,
+    SegmentsRenderRequest,
+    SegmentsRenderResponse,
     SubtitleRequest,
     TaskDeletionResponse,
     TaskQueryRequest,
@@ -29,6 +33,7 @@ from app.models.schema import (
 from app.services import state as sm
 from app.services import task as tm
 from app.utils import utils
+from fastapi.responses import FileResponse
 
 # 认证依赖项
 # router = new_router(dependencies=[Depends(base.verify_token)])
@@ -70,6 +75,309 @@ def create_audio(
     background_tasks: BackgroundTasks, request: Request, body: AudioRequest
 ):
     return create_task(request, body, stop_at="audio")
+
+
+@router.post(
+    "/segments/plan",
+    response_model=SegmentsPlanResponse,
+    summary="Create a segment plan based on materials and audio",
+)
+def plan_segments_endpoint(request: Request, body: SegmentsPlanRequest):
+    request_id = base.get_task_id(request)
+    task_id = utils.get_uuid()
+    try:
+        # 1. script & terms
+        video_script = tm.generate_script(task_id, body)
+        video_terms = ""
+        if body.video_source != "local":
+            video_terms = tm.generate_terms(task_id, body, video_script)
+
+        # snapshot
+        tm.save_script_data(task_id, video_script, video_terms, body)
+
+        # 2. audio
+        audio_file, audio_duration, sub_maker = tm.generate_audio(task_id, body, video_script)
+        if not audio_file:
+            raise ValueError("audio generation failed")
+
+        # 2.5 subtitle (generate once here so later renders have subtitles)
+        subtitle_path = tm.generate_subtitle(task_id, body, video_script, sub_maker, audio_file)
+
+        # 3. materials
+        downloaded_videos = tm.get_video_materials(task_id, body, video_terms, audio_duration)
+        if not downloaded_videos:
+            raise ValueError("no materials found")
+
+        # 4. segments plan
+        from app.services import video as video_service
+
+        segments = video_service.plan_segments(
+            task_id=task_id,
+            video_paths=downloaded_videos,
+            audio_file=audio_file,
+            video_aspect=body.video_aspect,
+            video_concat_mode=body.video_concat_mode,
+            max_clip_duration=body.video_clip_duration,
+        )
+
+        # update task state
+        sm.state.update_task(
+            task_id,
+            state=1,
+            progress=100,
+            script=video_script,
+            terms=video_terms,
+            audio_file=audio_file,
+            audio_duration=audio_duration,
+            subtitle_path=subtitle_path,
+            materials=downloaded_videos,
+            segments=[s.model_dump() for s in segments],
+        )
+        # spawn background job to pre-generate thumbnails for faster UI
+        utils.run_in_background(video_service.ensure_thumbs, task_id)
+
+        data = {"task_id": task_id, "segments": segments}
+        return utils.get_response(200, data)
+    except Exception as e:
+        raise HttpException(task_id=task_id, status_code=400, message=f"{request_id}: {str(e)}")
+
+
+@router.get(
+    "/tasks/{task_id}/segments",
+    response_model=SegmentsPlanResponse,
+    summary="Get saved segment plan of task",
+)
+def get_segments_endpoint(request: Request, task_id: str = Path(..., description="Task ID")):
+    from app.services import video as video_service
+
+    request_id = base.get_task_id(request)
+    try:
+        segments = video_service.load_segments(task_id)
+        data = {"task_id": task_id, "segments": segments}
+        return utils.get_response(200, data)
+    except Exception as e:
+        raise HttpException(task_id=task_id, status_code=404, message=f"{request_id}: {str(e)}")
+
+
+@router.get(
+    "/tasks/{task_id}/segments/{segment_id}/thumb",
+    summary="Get or generate a thumbnail image for the given segment",
+)
+def get_segment_thumb_endpoint(request: Request, task_id: str = Path(...), segment_id: str = Path(...)):
+    from app.services import video as video_service
+
+    request_id = base.get_task_id(request)
+    try:
+        path = video_service.get_segment_thumbnail(task_id, segment_id)
+        # naive content-type detection by extension
+        ext = os.path.splitext(path)[1].lower()
+        media = "image/jpeg"
+        if ext in [".png"]:
+            media = "image/png"
+        elif ext in [".webp"]:
+            media = "image/webp"
+        elif ext in [".gif"]:
+            media = "image/gif"
+        return FileResponse(path, media_type=media)
+    except Exception as e:
+        raise HttpException(task_id=task_id, status_code=404, message=f"{request_id}: {str(e)}")
+
+
+@router.get(
+    "/tasks/{task_id}/segments/thumbs",
+    summary="Ensure thumbnails for all segments and return their URLs",
+)
+def list_segment_thumbs_endpoint(request: Request, task_id: str = Path(...)):
+    from app.services import video as video_service
+    endpoint = config.app.get("endpoint", "")
+    if not endpoint:
+        endpoint = str(request.base_url)
+    endpoint = endpoint.rstrip("/")
+
+    request_id = base.get_task_id(request)
+    try:
+        segments = video_service.load_segments(task_id)
+        result = []
+        for s in segments:
+            seg_id = s.segment_id if hasattr(s, 'segment_id') else s.get('segment_id')
+            if not seg_id:
+                continue
+            try:
+                _ = video_service.get_segment_thumbnail(task_id, seg_id)
+                # public path under /tasks
+                public_path = f"{endpoint}/tasks/{task_id}/thumbs/{seg_id}.jpg"
+                result.append({"segment_id": seg_id, "thumb": public_path})
+            except Exception:
+                result.append({"segment_id": seg_id, "thumb": ""})
+        return utils.get_response(200, {"task_id": task_id, "thumbs": result})
+    except Exception as e:
+        raise HttpException(task_id=task_id, status_code=404, message=f"{request_id}: {str(e)}")
+
+
+@router.post(
+    "/segments/save",
+    response_model=SegmentsPlanResponse,
+    summary="Save provided segments plan for a task",
+)
+def save_segments_endpoint(request: Request, body: SegmentsRenderRequest):
+    from app.services import video as video_service
+
+    request_id = base.get_task_id(request)
+    task_id = body.task_id
+    try:
+        if not task_id:
+            raise ValueError("missing task_id")
+        if not body.segments or len(body.segments) == 0:
+            raise ValueError("segments is empty")
+
+        # persist to segments.json
+        video_service.save_segments(task_id, body.segments)
+
+        # update state snapshot
+        sm.state.update_task(task_id, state=1, progress=100, segments=[s.model_dump() for s in body.segments])
+
+        # pre-generate thumbs in background
+        utils.run_in_background(video_service.ensure_thumbs, task_id)
+
+        data = {"task_id": task_id, "segments": body.segments}
+        return utils.get_response(200, data)
+    except Exception as e:
+        raise HttpException(task_id=task_id, status_code=400, message=f"{request_id}: {str(e)}")
+
+
+@router.post(
+    "/segments/render",
+    response_model=SegmentsRenderResponse,
+    summary="Render video from provided segments plan",
+)
+def render_segments_endpoint(request: Request, body: SegmentsRenderRequest):
+    from app.services import video as video_service
+
+    request_id = base.get_task_id(request)
+    task_id = body.task_id
+    try:
+        task_state = sm.state.get_task(task_id) or {}
+        audio_file = task_state.get("audio_file", "")
+        subtitle_path = task_state.get("subtitle_path", "")
+        # be robust: if state lost fields, fall back to default task file locations
+        try:
+            task_path = utils.task_dir(task_id)
+        except Exception:
+            task_path = None
+        if (not audio_file) and task_path:
+            import os
+            candidate = os.path.join(task_path, "audio.mp3")
+            if os.path.exists(candidate):
+                audio_file = candidate
+        if (not subtitle_path) and task_path:
+            import os
+            candidate = os.path.join(task_path, "subtitle.srt")
+            if os.path.exists(candidate):
+                subtitle_path = candidate
+        if not audio_file:
+            raise ValueError("missing audio_file: please run segments/plan first")
+
+        params = body.params
+        if params is None:
+            # fallback to minimal defaults
+            from app.models.schema import VideoParams
+
+            params = VideoParams(
+                video_subject="",
+                video_aspect=task_state.get("params", {}).get("video_aspect", "9:16"),
+                video_concat_mode=task_state.get("params", {}).get("video_concat_mode", "random"),
+                video_transition_mode=task_state.get("params", {}).get("video_transition_mode", None),
+                video_clip_duration=task_state.get("params", {}).get("video_clip_duration", 5),
+            )
+
+        # ensure subtitle exists when enabled
+        try:
+            import os
+            from app.services import subtitle as subtitle_service
+            # resolve boolean safely
+            sub_enabled = True
+            try:
+                sub_enabled = bool(getattr(params, 'subtitle_enabled', True))
+            except Exception:
+                sub_enabled = True
+            if sub_enabled and (not subtitle_path or not os.path.exists(subtitle_path)) and audio_file:
+                # try to get script content from state or script.json
+                script_text = task_state.get('script', '')
+                if not script_text:
+                    try:
+                        import json
+                        script_file = os.path.join(utils.task_dir(task_id), 'script.json')
+                        if os.path.exists(script_file):
+                            with open(script_file, 'r', encoding='utf-8') as fd:
+                                s = json.load(fd)
+                                script_text = s.get('script', '')
+                    except Exception:
+                        script_text = ''
+                # generate via whisper then correct if script available
+                _subtitle_path = os.path.join(utils.task_dir(task_id), 'subtitle.srt')
+                subtitle_service.create(audio_file=audio_file, subtitle_file=_subtitle_path)
+                if script_text:
+                    try:
+                        subtitle_service.correct(subtitle_file=_subtitle_path, video_script=script_text)
+                    except Exception:
+                        pass
+                # update local var and state snapshot
+                subtitle_path = _subtitle_path
+                sm.state.update_task(task_id, subtitle_path=subtitle_path)
+        except Exception:
+            # best-effort fallback; ignore subtitle generation failure
+            pass
+
+        preview_mode = False
+        try:
+            preview_mode = bool(getattr(body, 'preview', False))
+        except Exception:
+            preview_mode = False
+
+        preview_label = None
+        try:
+            if len(body.segments or []) == 1:
+                seg0 = body.segments[0]
+                preview_label = getattr(seg0, 'segment_id', None) or 'single'
+                if not preview_mode:
+                    preview_mode = True
+        except Exception:
+            pass
+
+        combined, final = video_service.render_from_segments(
+            task_id=task_id,
+            segments=body.segments,
+            params=params,
+            audio_file=audio_file,
+            subtitle_path=subtitle_path,
+            preview=preview_mode,
+            preview_label=preview_label,
+        )
+
+        endpoint = config.app.get("endpoint", "")
+        if not endpoint:
+            endpoint = str(request.base_url)
+        endpoint = endpoint.rstrip("/")
+        task_dir = utils.task_dir()
+        def to_uri(file):
+            if not file:
+                return ""
+            if not file.startswith(endpoint):
+                _uri_path = file.replace(task_dir, "tasks").replace("\\", "/")
+                _uri_path = f"{endpoint}/{_uri_path}"
+            else:
+                _uri_path = file
+            return _uri_path
+
+        sm.state.update_task(task_id, state=1, progress=100, videos=[final] if final else [], combined_videos=[combined] if combined else [])
+        data = {
+            "task_id": task_id,
+            "combined_video": to_uri(combined),
+            "final_video": to_uri(final),
+        }
+        return utils.get_response(200, data)
+    except Exception as e:
+        raise HttpException(task_id=task_id, status_code=400, message=f"{request_id}: {str(e)}")
 
 
 def create_task(
@@ -130,8 +438,10 @@ def get_task(
         task_dir = utils.task_dir()
 
         def file_to_uri(file):
-            if not file.startswith(endpoint):
-                _uri_path = v.replace(task_dir, "tasks").replace("\\", "/")
+            if not file:
+                return file
+            if not str(file).startswith(endpoint):
+                _uri_path = str(file).replace(task_dir, "tasks").replace("\\", "/")
                 _uri_path = f"{endpoint}/{_uri_path}"
             else:
                 _uri_path = file
