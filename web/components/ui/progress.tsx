@@ -18,11 +18,11 @@ export function Progress({ value = 0, className, ...props }: ProgressProps) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={Math.round(v)}
-      className={cn('relative h-2 w-48 overflow-hidden rounded bg-neutral-200', className)}
+      className={cn('relative h-2 w-48 overflow-hidden rounded bg-muted', className)}
       {...props}
     >
       <div
-        className="h-full bg-neutral-800 transition-[width] duration-300"
+        className="h-full bg-primary transition-[width] duration-300"
         style={{ width: `${v}%` }}
       />
     </div>
@@ -30,4 +30,3 @@ export function Progress({ value = 0, className, ...props }: ProgressProps) {
 }
 
 export default Progress
-

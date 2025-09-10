@@ -120,11 +120,11 @@ export default function TaskDetailClient({ taskId, initialTask, initialSegments 
 
   return (
     <div className="space-y-4">
-      <div className="rounded border bg-white p-4 text-sm">
+      <div className="rounded border bg-card p-4 text-sm transition-all hover:shadow-sm">
         <div className="flex items-center justify-between">
           <div>
             进度：{progress}%{' '}
-            {isProcessing && <span className="ml-2 text-xs text-neutral-500">（自动刷新中）</span>}
+            {isProcessing && <span className="ml-2 text-xs text-muted-foreground">（自动刷新中）</span>}
             {isFailed && <span className="ml-2 text-xs text-red-600">（失败）</span>}
           </div>
           <div className="flex items-center gap-2">
@@ -145,10 +145,10 @@ export default function TaskDetailClient({ taskId, initialTask, initialSegments 
         {(videos.length > 0 || combined.length > 0) && (
           <div className="mt-2 flex flex-wrap gap-3">
             {videos.map((u, i) => (
-              <a key={i} className="text-blue-600 underline" href={u} target="_blank">成片{i + 1}</a>
+              <a key={i} className="text-primary underline" href={u} target="_blank">成片{i + 1}</a>
             ))}
             {combined.map((u, i) => (
-              <a key={i} className="text-blue-600 underline" href={u} target="_blank">合成{i + 1}</a>
+              <a key={i} className="text-primary underline" href={u} target="_blank">合成{i + 1}</a>
             ))}
           </div>
         )}
@@ -165,7 +165,7 @@ export default function TaskDetailClient({ taskId, initialTask, initialSegments 
             queryClient.invalidateQueries({ queryKey: ['task', taskId] })
           }}
         />
-        <div className="h-px bg-neutral-200" />
+        <div className="h-px bg-muted" />
         <h2 className="font-medium">分镜与时间线（MVP）</h2>
         <MvpTimeline
           key={timelineKey}

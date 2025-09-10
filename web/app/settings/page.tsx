@@ -295,10 +295,10 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
-          <div className="text-xs text-neutral-600">来自 resource/fonts；选择“默认”使用后端默认字体。</div>
+          <div className="text-xs text-muted-foreground">来自 resource/fonts；选择“默认”使用后端默认字体。</div>
         </section>
 
-        <section className="space-y-3 rounded border bg-white p-4">
+        <section className="space-y-3 rounded border bg-card p-4">
           <h2 className="font-medium">密钥</h2>
           <div className="grid gap-3">
             <div className="space-y-1">

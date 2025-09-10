@@ -464,12 +464,12 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-sm text-neutral-700">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
           <input type="checkbox" className="h-4 w-4" onChange={e => selectAll(e.target.checked)}
                  checked={selected.size > 0 && selected.size === segments.length} aria-label="全选" />
           全选
         </label>
-        <div className="text-sm text-neutral-600">已选 {selected.size} 段</div>
+        <div className="text-sm text-muted-foreground">已选 {selected.size} 段</div>
         <div className="ml-auto" />
         <Button
           disabled={isPending || !canRender || hasErrors || disabledExternally || renderMode !== null}
@@ -482,7 +482,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
           )}
         </Button>
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-neutral-600">数量</span>
+          <span className="text-muted-foreground">数量</span>
           <Input type="number" className="h-8 w-20" min={1} max={segments.length || 1} value={previewCount} disabled={renderMode !== null || disabledExternally}
                  onChange={e => setPreviewCount(Math.max(1, Math.min(Number(e.target.value || '1'), segments.length || 1)))} />
         </div>
@@ -503,7 +503,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
           </Button>
         )}
         {queue.length > 0 && (
-          <div className="text-xs text-neutral-600">队列：{queue.length}</div>
+        <div className="text-xs text-muted-foreground">队列：{queue.length}</div>
         )}
         {lastPreviewUrlRef.current && (
           <Button variant="ghost" onClick={() => window.open(lastPreviewUrlRef.current!, '_blank')}>打开最近预览</Button>
@@ -521,16 +521,16 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
       </div>
 
       {/* 预览提示：仅合成不混流，不含字幕/音频 */}
-      <div className="rounded border border-neutral-200 bg-neutral-50 p-2 text-xs text-neutral-700">
+      <div className="rounded border border-border bg-muted p-2 text-xs text-muted-foreground">
         提示：预览仅返回合成画面用于快看节奏，不包含字幕与 BGM/配音；字幕会在“全量渲染”后出现在成片中。
       </div>
 
       {/* 字幕与音频体验（P1） */}
-      <div className="rounded border bg-white p-3 text-sm">
+      <div className="rounded border bg-card p-3 text-sm transition-all hover:shadow-sm">
         <div className="mb-2 font-medium">字幕与音频</div>
         <div className="grid gap-3 md:grid-cols-3">
           <label className="flex items-center gap-2">
-            <span className="w-20 text-neutral-600">字体</span>
+            <span className="w-20 text-muted-foreground">字体</span>
             <div className="flex-1">
               <Select value={fontName || 'default'} onValueChange={(v) => setFontName(v === 'default' ? '' : v)}>
                 <SelectTrigger className="h-8">
@@ -550,7 +550,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
             启用字幕
           </label>
           <label className="flex items-center gap-2">
-            <span className="w-20 text-neutral-600">位置</span>
+            <span className="w-20 text-muted-foreground">位置</span>
             <div className="flex-1">
               <Select value={subtitlePosition} onValueChange={(v) => setSubtitlePosition(v as any)}>
                 <SelectTrigger className="h-8">
@@ -567,7 +567,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
           </label>
           {subtitlePosition === 'custom' && (
             <label className="flex items-center gap-2">
-              <span className="w-20 text-neutral-600">纵向位置</span>
+              <span className="w-20 text-muted-foreground">纵向位置</span>
               <div className="flex-1 flex items-center gap-2">
                 <Slider value={[subtitleCustomPos]} min={0} max={100} step={1} onValueChange={(v) => setSubtitleCustomPos(v?.[0] ?? 70)} />
                 <span className="w-10 text-right tabular-nums">{Math.round(subtitleCustomPos)}%</span>
@@ -575,23 +575,23 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
             </label>
           )}
           <label className="flex items-center gap-2">
-            <span className="w-20 text-neutral-600">字号</span>
+            <span className="w-20 text-muted-foreground">字号</span>
             <Input type="number" className="h-8" min={12} max={120} value={fontSize} onChange={e => setFontSize(Math.max(12, Math.min(120, Number(e.target.value || 60))))} />
           </label>
           <label className="flex items-center gap-2">
-            <span className="w-20 text-neutral-600">描边</span>
+            <span className="w-20 text-muted-foreground">描边</span>
             <Input type="number" className="h-8" min={0} max={8} step={0.5} value={strokeWidth} onChange={e => setStrokeWidth(Math.max(0, Math.min(8, Number(e.target.value || 0))))} />
           </label>
           <label className="flex items-center gap-2">
-            <span className="w-20 text-neutral-600">时移(秒)</span>
+            <span className="w-20 text-muted-foreground">时移(秒)</span>
             <Input type="number" className="h-8" min={-5} max={5} step={0.1} value={subtitleOffset} onChange={e => setSubtitleOffset(Number(e.target.value || 0))} />
           </label>
           <label className="flex items-center gap-2">
-            <span className="w-20 text-neutral-600">文字颜色</span>
+            <span className="w-20 text-muted-foreground">文字颜色</span>
             <Input type="text" className="h-8" value={textColor} onChange={e => setTextColor(e.target.value)} />
           </label>
           <label className="flex items-center gap-2">
-            <span className="w-20 text-neutral-600">描边颜色</span>
+            <span className="w-20 text-muted-foreground">描边颜色</span>
             <Input type="text" className="h-8" value={strokeColor} onChange={e => setStrokeColor(e.target.value)} />
           </label>
           <div className="flex items-center gap-2">
@@ -600,26 +600,26 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
             </label>
             {textBgEnabled && (
               <>
-                <span className="w-20 text-neutral-600">背景色</span>
+                <span className="w-20 text-muted-foreground">背景色</span>
                 <Input type="text" className="h-8" value={textBgColor} onChange={e => setTextBgColor(e.target.value)} />
               </>
             )}
           </div>
 
-          <div className="col-span-full h-px bg-neutral-200" />
+          <div className="col-span-full h-px bg-muted" />
           <label className="flex items-center gap-2">
-            <span className="w-20 text-neutral-600">BGM 音量</span>
+            <span className="w-20 text-muted-foreground">BGM 音量</span>
             <div className="flex-1 flex items-center gap-2">
               <Slider value={[Math.round((bgmVolume || 0) * 100)]} min={0} max={100} step={1} onValueChange={(v) => setBgmVolume((v?.[0] ?? 0) / 100)} />
               <span className="w-10 text-right tabular-nums">{Math.round((bgmVolume || 0) * 100)}%</span>
             </div>
           </label>
           <label className="flex items-center gap-2">
-            <span className="w-20 text-neutral-600">淡入</span>
+            <span className="w-20 text-muted-foreground">淡入</span>
             <Input type="number" className="h-8" min={0} max={10} step={0.5} value={bgmFadeInSec} onChange={e => setBgmFadeInSec(Number(e.target.value || 0))} />
           </label>
           <label className="flex items-center gap-2">
-            <span className="w-20 text-neutral-600">淡出</span>
+            <span className="w-20 text-muted-foreground">淡出</span>
             <Input type="number" className="h-8" min={0} max={10} step={0.5} value={bgmFadeOutSec} onChange={e => setBgmFadeOutSec(Number(e.target.value || 0))} />
           </label>
           <label className="flex items-center gap-2">
@@ -631,10 +631,10 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
 
       {/* 横向时间线（P1：dnd-kit 拖拽 + 选中高亮 + 缩略图 + 时码标尺） */}
       {segments.length > 0 && (
-        <div className="rounded border bg-white p-3">
+      <div className="rounded border bg-card p-3 transition-all hover:shadow-sm">
           <div className="mb-2 flex items-center justify-between">
-            <div className="text-sm text-neutral-700">时间线</div>
-            <div className="flex w-64 items-center gap-2 text-xs text-neutral-600">
+            <div className="text-sm text-foreground">时间线</div>
+            <div className="flex w-64 items-center gap-2 text-xs text-muted-foreground">
               <span className="whitespace-nowrap">缩放</span>
               <Slider
                 value={[pxPerSec]}
@@ -757,10 +757,10 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-3 rounded border bg-white p-3 text-sm">
-        <div className="text-neutral-600">批量编辑（作用于已选 {selected.size} 段）</div>
+      <div className="flex flex-wrap items-center gap-3 rounded border bg-card p-3 text-sm transition-all hover:shadow-sm">
+        <div className="text-muted-foreground">批量编辑（作用于已选 {selected.size} 段）</div>
         <div className="flex items-center gap-2">
-          <span className="text-neutral-600">时长</span>
+          <span className="text-muted-foreground">时长</span>
           <Input type="number" min={0.5} step={0.1} className="h-8 w-24" placeholder="秒" disabled={renderMode !== null || disabledExternally}
                  onKeyDown={(e) => {
                    if (e.key === 'Enter') {
@@ -770,7 +770,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                  }} />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-neutral-600">速度</span>
+          <span className="text-muted-foreground">速度</span>
           <Input type="number" min={0.5} max={2} step={0.05} className="h-8 w-24" placeholder="0.5~2.0" disabled={renderMode !== null || disabledExternally}
                  onKeyDown={(e) => {
                    if (e.key === 'Enter') {
@@ -780,7 +780,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                  }} />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-neutral-600">转场</span>
+          <span className="text-muted-foreground">转场</span>
           <Select onValueChange={(v) => applyBulk({ transition: (v === INHERIT ? (null as any) : v) as any })} disabled={renderMode !== null || disabledExternally}>
             <SelectTrigger className="h-8 w-40">
               <SelectValue placeholder="继承/无" />
@@ -800,11 +800,11 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
       </div>
 
       {segments.length === 0 ? (
-        <div className="text-sm text-neutral-600">暂无分镜。</div>
+        <div className="text-sm text-muted-foreground">暂无分镜。</div>
       ) : (
         <ol className="space-y-2">
           {segments.map((s, i) => (
-            <li key={s.segment_id} className="rounded border bg-white p-3 text-sm">
+            <li key={s.segment_id} className="rounded border bg-card p-3 text-sm transition-all hover:bg-muted/60">
               <div className="flex flex-wrap items-center gap-3">
                 <input
                   type="checkbox"
@@ -813,10 +813,10 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                   onChange={e => toggleSelect(s.segment_id, e.target.checked)}
                   aria-label={`选择分镜 ${s.order}`}
                 />
-                <div className="min-w-[3rem] text-neutral-500">#{s.order}</div>
+                <div className="min-w-[3rem] text-muted-foreground">#{s.order}</div>
                 <div className="min-w-0 flex-1">
                   <div className="font-medium">{s.scene_title || '未命名'}</div>
-                  {s.shot_desc && <div className="text-neutral-600">{s.shot_desc}</div>}
+                  {s.shot_desc && <div className="text-muted-foreground">{s.shot_desc}</div>}
                 </div>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" onClick={() => move(i, -1)} disabled={i === 0}>上移</Button>
@@ -830,25 +830,25 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
 
               <div className="mt-3 grid gap-3 md:grid-cols-4">
                 <label className="flex items-center gap-2">
-                  <span className="w-16 text-neutral-600">时长</span>
+                  <span className="w-16 text-muted-foreground">时长</span>
                   <Input type="number" className={`h-8 ${(!isFinite(Number(s.duration)) || Number(s.duration) <= 0) ? 'border-red-500 focus-visible:ring-red-500' : ''}`} disabled={renderMode !== null || disabledExternally}
                          min={0.1} step={0.1} value={s.duration ?? 0}
                          onChange={e => updateDuration(i, e.target.value)} />
                 </label>
                 <label className="flex items-center gap-2">
-                  <span className="w-16 text-neutral-600">入点</span>
+                  <span className="w-16 text-muted-foreground">入点</span>
                   <Input type="number" className={`h-8 ${(!isFinite(Number(s.start)) || Number(s.start) < 0) ? 'border-red-500 focus-visible:ring-red-500' : ''}`} disabled={renderMode !== null || disabledExternally}
                          min={0} step={0.1} value={s.start ?? 0}
                          onChange={e => updateStart(i, e.target.value)} />
                 </label>
                 <label className="flex items-center gap-2">
-                  <span className="w-16 text-neutral-600">出点</span>
+                  <span className="w-16 text-muted-foreground">出点</span>
                   <Input type="number" className={`h-8 ${(!isFinite(Number(s.end)) || Number(s.end) <= Number(s.start ?? 0)) ? 'border-red-500 focus-visible:ring-red-500' : ''}`} disabled={renderMode !== null || disabledExternally}
                          min={0} step={0.1} value={s.end ?? (Number(s.start ?? 0) + Number(s.duration ?? 0))}
                          onChange={e => updateEnd(i, e.target.value)} />
                 </label>
                 <label className="flex items-center gap-2">
-                  <span className="w-16 text-neutral-600">转场</span>
+                  <span className="w-16 text-muted-foreground">转场</span>
                   <div className="flex-1">
                     <Select value={s.transition ?? INHERIT} onValueChange={(v) => updateField(i, 'transition', v === INHERIT ? null : v)} disabled={renderMode !== null || disabledExternally}>
                       <SelectTrigger className="h-8">
@@ -864,7 +864,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                 </label>
                 {(s.transition === 'Mask') && (
                   <label className="flex items-center gap-2">
-                    <span className="w-16 text-neutral-600">遮罩</span>
+                    <span className="w-16 text-muted-foreground">遮罩</span>
                     <div className="flex-1">
                       <Select value={(s as any).transition_mask ?? 'horizontal'} onValueChange={(v) => updateField(i, 'transition_mask' as any, v)} disabled={renderMode !== null || disabledExternally}>
                         <SelectTrigger className="h-8">
@@ -882,7 +882,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                 )}
                 {(s.transition && s.transition !== INHERIT) && (
                   <label className="flex items-center gap-2">
-                    <span className="w-16 text-neutral-600">转场时长</span>
+                    <span className="w-16 text-muted-foreground">转场时长</span>
                     <Input type="number" className={`h-8 ${(((s as any).transition_duration ?? 1) < 0.2 || ((s as any).transition_duration ?? 1) > 2) ? 'border-red-500 focus-visible:ring-red-500' : ''}`} disabled={renderMode !== null || disabledExternally}
                            min={0.2} max={2} step={0.1} value={(s as any).transition_duration ?? 1}
                            onChange={e => updateField(i, 'transition_duration' as any, e.target.value)} />
@@ -890,7 +890,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                 )}
                 {(s.transition === 'SlideIn' || s.transition === 'SlideOut' || s.transition === 'Mask') && ((s as any).transition_mask !== 'circle') && (
                   <label className="flex items-center gap-2">
-                    <span className="w-16 text-neutral-600">方向</span>
+                    <span className="w-16 text-muted-foreground">方向</span>
                     <div className="flex-1">
                       <Select value={(s as any).transition_direction ?? 'left'} onValueChange={(v) => updateField(i, 'transition_direction' as any, v)} disabled={renderMode !== null || disabledExternally}>
                         <SelectTrigger className="h-8">
@@ -906,13 +906,13 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                   </label>
                 )}
                 <label className="flex items-center gap-2">
-                  <span className="w-16 text-neutral-600">速度</span>
+                  <span className="w-16 text-muted-foreground">速度</span>
                   <Input type="number" className={`h-8 ${((s.speed ?? 1) < 0.75 || (s.speed ?? 1) > 1.25) ? 'border-red-500 focus-visible:ring-red-500' : ''}`} disabled={renderMode !== null || disabledExternally}
                          min={0.75} max={1.25} step={0.01} value={s.speed ?? 1}
                          onChange={e => updateField(i, 'speed', e.target.value)} />
                 </label>
                 <label className="flex items-center gap-2">
-                  <span className="w-16 text-neutral-600">填充</span>
+                  <span className="w-16 text-muted-foreground">填充</span>
                   <div className="flex-1">
                     <Select value={s.fit ?? 'contain'} onValueChange={(v) => updateField(i, 'fit', v)} disabled={renderMode !== null || disabledExternally}>
                       <SelectTrigger className="h-8">
@@ -941,7 +941,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
         </ol>
       )}
       <div className="text-xs">
-        <div className="text-neutral-600">总时长：{formatTime(totalDuration)}{audioDuration ? ` / 音频：${formatTime(audioDuration)}` : ''}</div>
+        <div className="text-muted-foreground">总时长：{formatTime(totalDuration)}{audioDuration ? ` / 音频：${formatTime(audioDuration)}` : ''}</div>
         {audioDuration > 0 && totalDuration - audioDuration > 0.05 && (
           <div className="text-red-600">总视频时长超过音频长度，建议修剪或调整。</div>
         )}
@@ -1028,10 +1028,10 @@ function SortableChip({ id, label, segment, widthPx, thumbUrl, fallbackThumbUrl,
       type="button"
       onClick={onClick}
       className={
-        `group relative min-w-[120px] select-none rounded border p-2 text-left text-sm shadow-sm transition-colors ` +
-        (selected ? 'border-blue-600 bg-blue-50' : 'border-neutral-200 bg-white hover:bg-neutral-50') +
+        `group relative min-w-[120px] select-none rounded border p-2 text-left text-sm shadow-sm transition-all ` +
+        (selected ? 'border-primary bg-primary/10' : 'border-border bg-card hover:bg-muted') +
         (disabled ? ' opacity-60 cursor-not-allowed' : ' cursor-grab active:cursor-grabbing') +
-        (isDragging ? ' ring-2 ring-blue-200' : '')
+        (isDragging ? ' ring-2 ring-primary/30' : '')
       }
       role="option"
       aria-selected={selected}
@@ -1052,7 +1052,7 @@ function SortableChip({ id, label, segment, widthPx, thumbUrl, fallbackThumbUrl,
         </>
       )}
       <div className="truncate font-medium">{label}</div>
-      <div className="mt-1 h-[64px] w-full overflow-hidden rounded bg-neutral-100">
+      <div className="mt-1 h-[64px] w-full overflow-hidden rounded bg-muted">
         <img
           src={thumbUrl}
           alt="thumb"
@@ -1068,11 +1068,11 @@ function SortableChip({ id, label, segment, widthPx, thumbUrl, fallbackThumbUrl,
           }}
         />
         {/* fallback placeholder when image fails */}
-        <div className="flex h-[64px] w-full items-center justify-center text-xs text-neutral-400">
+        <div className="flex h-[64px] w-full items-center justify-center text-xs text-muted-foreground">
           缩略图
         </div>
       </div>
-      <div className="mt-1 text-xs text-neutral-500">{formatTime(segment.duration ?? 0)}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{formatTime(segment.duration ?? 0)}</div>
     </button>
   )
 }
@@ -1092,8 +1092,8 @@ function TimelineRuler({ segments, scale, audioDuration = 0 }: { segments: Segme
     <div className="mb-2 overflow-x-auto">
       <div className="relative h-8 min-w-full" style={{ width: `${totalPx}px` }}>
         {[...Array(seconds + 1)].map((_, i) => (
-          <div key={i} className="absolute top-0 h-full border-l border-neutral-300 text-[10px] text-neutral-500" style={{ left: `${i * scale}px` }}>
-            <div className="absolute top-0 h-2 w-px bg-neutral-400" />
+          <div key={i} className="absolute top-0 h-full border-l border-border text-[10px] text-muted-foreground" style={{ left: `${i * scale}px` }}>
+            <div className="absolute top-0 h-2 w-px bg-border" />
             <div className="absolute top-0 left-1">{formatTime(i)}</div>
           </div>
         ))}
