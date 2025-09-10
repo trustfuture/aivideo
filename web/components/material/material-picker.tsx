@@ -137,21 +137,21 @@ export default function MaterialPicker({ open, onOpenChange, taskId, onPicked, i
               <Input className="h-8" placeholder="筛选文件名" value={libFilter} onChange={(e) => setLibFilter(e.target.value)} />
             </div>
             {materials.length === 0 ? (
-              <div className="text-sm text-neutral-600">暂无素材。</div>
+              <div className="text-sm text-muted-foreground">暂无素材。</div>
             ) : (
               <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {materials.filter(m => !libFilter || m.name.toLowerCase().includes(libFilter.toLowerCase())).map((m) => (
                   <li key={m.file} className="flex items-center justify-between rounded border p-2">
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium">{m.name}</div>
-                      <div className="text-xs text-neutral-500">{(m.size / 1024 / 1024).toFixed(1)} MB{m.duration != null ? ` · ${m.duration.toFixed(1)}s` : ''}</div>
+                      <div className="text-xs text-muted-foreground">{(m.size / 1024 / 1024).toFixed(1)} MB{m.duration != null ? ` · ${m.duration.toFixed(1)}s` : ''}</div>
                     </div>
                     <Button size="sm" onClick={() => pickAndClose({ file: m.file, duration: m.duration })} disabled={loading}>使用</Button>
                   </li>
                 ))}
               </ul>
             )}
-            <div className="flex items-center justify-between text-sm text-neutral-600">
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
               <div>共 {total} 项</div>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>上一页</Button>
@@ -189,22 +189,22 @@ export default function MaterialPicker({ open, onOpenChange, taskId, onPicked, i
                 ) : '检索'}
               </Button>
             </div>
-            {results && results.length === 0 && <div className="text-sm text-neutral-600">未找到素材。</div>}
+            {results && results.length === 0 && <div className="text-sm text-muted-foreground">未找到素材。</div>}
             {results && results.length > 0 && (
               <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {results.map((r) => (
                   <li key={r.url} className="flex items-center gap-3 rounded border p-2">
-                    <div className="h-14 w-24 shrink-0 overflow-hidden rounded bg-neutral-100">
+                    <div className="h-14 w-24 shrink-0 overflow-hidden rounded bg-muted">
                       {r.thumb ? (
                         <img src={r.thumb} alt="thumb" className="h-14 w-24 object-cover" />
                       ) : (
-                        <div className="flex h-14 w-24 items-center justify-center text-xs text-neutral-400">无缩略图</div>
+                        <div className="flex h-14 w-24 items-center justify-center text-xs text-muted-foreground">无缩略图</div>
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium">{new URL(r.url).hostname}</div>
-                      <div className="text-xs text-neutral-500">{r.provider} {r.duration != null ? `· ${r.duration.toFixed(1)}s` : ''}</div>
-                      <div className="truncate text-xs text-neutral-500">{r.url}</div>
+                      <div className="text-xs text-muted-foreground">{r.provider} {r.duration != null ? `· ${r.duration.toFixed(1)}s` : ''}</div>
+                      <div className="truncate text-xs text-muted-foreground">{r.url}</div>
                     </div>
                     <Button size="sm" onClick={() => useOnline(r)} disabled={loading || downloading === r.url}>
                       {downloading === r.url ? (

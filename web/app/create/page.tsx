@@ -354,7 +354,7 @@ export default function CreatePage() {
           </div>
 
           {videoSource === 'local' && (
-            <div className="space-y-2 rounded border bg-white p-3">
+            <div className="space-y-2 rounded border bg-card p-3">
               <div className="text-sm font-medium">本地素材上传</div>
               <div className="flex items-center gap-2">
                 <input
@@ -407,13 +407,13 @@ export default function CreatePage() {
                   }}
                 />
                 {uploadingMaterials && (
-                  <span className="inline-flex items-center gap-2 text-sm text-neutral-600">
+                  <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                     <LoadingSpinner size={14} /> 正在上传：{materialsUploadingName} <Progress value={materialsUploadProgress} />
                   </span>
                 )}
               </div>
               {materials.length > 0 && (
-                <div className="text-xs text-neutral-600">已上传并选中 {selectedMaterialFiles.size} 个素材</div>
+                <div className="text-xs text-muted-foreground">已上传并选中 {selectedMaterialFiles.size} 个素材</div>
               )}
             </div>
           )}
@@ -432,7 +432,7 @@ export default function CreatePage() {
             </Select>
           </div>
           <div className="space-y-1">
-            <Label className="flex items-center gap-2">声库 {isLoadingVoices && <span className="inline-flex items-center gap-1 text-xs text-neutral-600"><LoadingSpinner size={12} /> 加载中</span>}</Label>
+            <Label className="flex items-center gap-2">声库 {isLoadingVoices && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><LoadingSpinner size={12} /> 加载中</span>}</Label>
             <div className="flex items-center gap-2">
               <Select value={voices.includes(voiceName) ? voiceName : undefined} onValueChange={setVoiceName}>
                 <SelectTrigger>
@@ -572,7 +572,7 @@ export default function CreatePage() {
                     <span className="inline-flex items-center gap-2"><LoadingSpinner size={14} /> 刷新中…</span>
                   ) : '刷新列表'}
                 </Button>
-                <label className="text-sm text-neutral-600">或上传 MP3 文件：</label>
+                <label className="text-sm text-muted-foreground">或上传 MP3 文件：</label>
                 <input
                   type="file"
                   accept="audio/mpeg"
@@ -603,7 +603,7 @@ export default function CreatePage() {
                   }}
                 />
                 {uploadingBgm && (
-                  <span className="ml-2 inline-flex items-center gap-2 text-sm text-neutral-600">
+                  <span className="ml-2 inline-flex items-center gap-2 text-sm text-muted-foreground">
                     <LoadingSpinner size={14} /> 上传中… <Progress value={bgmUploadProgress} />
                   </span>
                 )}

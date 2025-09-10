@@ -103,8 +103,8 @@ export default function ShotlistEditor({ taskId, segments, onApplied }: { taskId
           <Button size="sm" onClick={() => startTransition(applyToSegments)} disabled={isPending}>应用到分镜</Button>
         </div>
       </div>
-      <div className="rounded border bg-white">
-        <div className="grid grid-cols-[3rem,1.2fr,8rem,2fr,8rem,7rem] items-center gap-2 border-b p-2 text-xs text-neutral-600">
+      <div className="rounded border bg-card">
+        <div className="grid grid-cols-[3rem,1.2fr,8rem,2fr,8rem,7rem] items-center gap-2 border-b p-2 text-xs text-muted-foreground">
           <div>#</div>
           <div>场景标题</div>
           <div>镜头序号</div>
@@ -115,7 +115,7 @@ export default function ShotlistEditor({ taskId, segments, onApplied }: { taskId
         <ul>
           {rows.map((r, i) => (
             <li key={i} className="grid grid-cols-[3rem,1.2fr,8rem,2fr,8rem,7rem] items-center gap-2 border-b p-2 text-sm">
-              <div className="text-neutral-500">#{i + 1}</div>
+              <div className="text-muted-foreground">#{i + 1}</div>
               <Input value={r.scene_title || ''} onChange={(e) => update(i, 'scene_title', e.target.value)} placeholder="场景标题" />
               <Input value={r.shot_no || ''} onChange={(e) => update(i, 'shot_no', e.target.value)} placeholder="如 1A" />
               <Input value={r.shot_desc || ''} onChange={(e) => update(i, 'shot_desc', e.target.value)} placeholder="镜头描述" />
@@ -133,11 +133,10 @@ export default function ShotlistEditor({ taskId, segments, onApplied }: { taskId
           ))}
         </ul>
         {rows.length === 0 && (
-          <div className="p-3 text-sm text-neutral-600">暂无 Shotlist，可点击“从分镜生成”初始化。</div>
+          <div className="p-3 text-sm text-muted-foreground">暂无 Shotlist，可点击“从分镜生成”初始化。</div>
         )}
       </div>
-      <div className="text-xs text-neutral-600">当前行数：{rows.length} · 分镜数量：{segments.length}</div>
+      <div className="text-xs text-muted-foreground">当前行数：{rows.length} · 分镜数量：{segments.length}</div>
     </div>
   )
 }
-

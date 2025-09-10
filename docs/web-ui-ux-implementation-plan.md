@@ -156,10 +156,13 @@ pnpm dlx shadcn-ui@latest add button input textarea select checkbox radio label 
 ## 实施清单（逐项落地）
 - P0（已完成）
   - 在 `app/layout.tsx` 引入 Toaster；集成 AppShell（Sidebar/Topbar/Content）。
-  - 在 `app/globals.css` 写入 Indigo 主题 Tokens（浅/深）。
+  - 在 `app/globals.css` 写入 Indigo 主题 Tokens（浅/深）；新增主题切换（浅色/深色/系统）。
   - 搭建 `components/ui/app-shell.tsx`、`components/ui/sidebar.tsx`、`components/ui/command-menu.tsx`。
   - 统一基础组件：Button/Input/Dialog/Dropdown/Tabs/Tooltip/Toast（已接入）。
   - 最小演示页：`app/demo/page.tsx` 展示按钮、输入、Tabs、Tooltip。
+  - 将首页/任务列表/表单设置等常见 `text-neutral-*`、`bg-white`、`bg-neutral-*` 调整为语义色（`text-muted-foreground`、`bg-card`、`bg-muted`）。
+
+提示：品牌名称可通过 `web/.env.local` 设置 `NEXT_PUBLIC_BRAND_NAME`（或修改 `web/lib/brand.ts` 默认值）。
 - P1
   - 集成 TanStack Table，封装 `components/ui/data-table/*`（列定义、Toolbar、密度切换）。
   - 统一表单：`components/ui/form/*` 封装 RHF + zod + 表单行/分组组件。
@@ -184,7 +187,3 @@ pnpm dlx shadcn-ui@latest add button input textarea select checkbox radio label 
 - 样式：`web/app/globals.css`。
 - 组件：`web/components/ui/*`。
 - 工具：`web/lib/utils.ts`（`cn()` 保持）。
-
----
-
-后续可在 `web/` 内开一个 P0 启动 PR（主题 Tokens + AppShell + 基础组件接入清单 + 最小演示页）。若需要，我可以按 Indigo 或 Violet 作为强调色预置主题。

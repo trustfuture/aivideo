@@ -54,3 +54,6 @@
 html, body { height: 100%; }
 body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 .text-balance { text-wrap: balance; }
+
+/* Ensure default Tailwind `.border` uses design token color */
+:where(.border) { border-color: hsl(var(--border)); }

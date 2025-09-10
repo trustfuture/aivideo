@@ -149,18 +149,18 @@ export default function TasksClient() {
         <Empty title="暂无任务" description="创建一个任务以开始生成视频。" />
       ) : (
         <div className="space-y-3">
-          <ul className="divide-y rounded border bg-white">
+          <ul className="divide-y rounded border bg-card">
             {tasks.map((t) => (
               <li key={t.task_id} className="flex items-center gap-4 p-3 text-sm">
                 <div className="min-w-0 flex-1">
                   <div className="font-medium">{t.task_id}</div>
-                  <div className="truncate text-neutral-600">进度 {t.progress ?? 0}%</div>
+                  <div className="truncate text-muted-foreground">进度 {t.progress ?? 0}%</div>
                   <div className="mt-1 flex flex-wrap gap-2">
                     {(t.videos || []).map((u, i) => (
-                      <a key={i} className="text-blue-600 underline" href={u} target="_blank">成片{i + 1}</a>
+                      <a key={i} className="text-primary underline" href={u} target="_blank">成片{i + 1}</a>
                     ))}
                     {(t.combined_videos || []).map((u, i) => (
-                      <a key={i} className="text-blue-600 underline" href={u} target="_blank">合成{i + 1}</a>
+                      <a key={i} className="text-primary underline" href={u} target="_blank">合成{i + 1}</a>
                     ))}
                   </div>
                 </div>
@@ -181,7 +181,7 @@ export default function TasksClient() {
             ))}
           </ul>
 
-          <div className="flex items-center justify-between text-sm text-neutral-600">
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
             <div>
               第 {p} / {totalPages} 页 · 共 {total} 项 {isFetching && <span className="ml-2 text-xs">加载中…</span>}
             </div>

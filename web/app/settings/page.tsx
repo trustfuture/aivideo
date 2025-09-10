@@ -222,7 +222,7 @@ export default function SettingsPage() {
       )}
 
       <div className="grid gap-4 md:grid-cols-2">
-        <section className="space-y-3 rounded border bg-white p-4">
+        <section className="space-y-3 rounded border bg-card p-4">
           <h2 className="font-medium">基础</h2>
           <div className="grid gap-3">
             <div className="space-y-1">
@@ -272,7 +272,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className="space-y-3 rounded border bg-white p-4">
+        <section className="space-y-3 rounded border bg-card p-4">
           <h2 className="font-medium">字幕默认值</h2>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
@@ -303,12 +303,12 @@ export default function SettingsPage() {
           <div className="grid gap-3">
             <div className="space-y-1">
               <Label>Pexels API Keys</Label>
-              <div className="text-xs text-neutral-600 mb-1">已配置 {(app.pexels_api_keys || []).length} 个 Key</div>
+          <div className="text-xs text-muted-foreground mb-1">已配置 {(app.pexels_api_keys || []).length} 个 Key</div>
               <Input type="password" value={pexelsKeysInput} onChange={(e) => setPexelsKeysInput(e.target.value)} placeholder="覆盖为：以逗号分隔多个 Key" />
             </div>
             <div className="space-y-1">
               <Label>Pixabay API Keys</Label>
-              <div className="text-xs text-neutral-600 mb-1">已配置 {(app.pixabay_api_keys || []).length} 个 Key</div>
+              <div className="text-xs text-muted-foreground mb-1">已配置 {(app.pixabay_api_keys || []).length} 个 Key</div>
               <Input type="password" value={pixabayKeysInput} onChange={(e) => setPixabayKeysInput(e.target.value)} placeholder="覆盖为：以逗号分隔多个 Key" />
             </div>
             <div className="space-y-1">
@@ -326,7 +326,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section className="space-y-3 rounded border bg-white p-4">
+        <section className="space-y-3 rounded border bg-card p-4">
           <h2 className="font-medium">TTS（Azure）</h2>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
@@ -350,10 +350,10 @@ export default function SettingsPage() {
               <Input value={azureSpeechKey} onChange={(e) => setAzureSpeechKey(e.target.value)} placeholder="留空则不修改" />
             </div>
           </div>
-          <div className="text-xs text-neutral-600">如果你的区域不在列表中，可先保存后在 config.toml 中手工调整。</div>
+          <div className="text-xs text-muted-foreground">如果你的区域不在列表中，可先保存后在 config.toml 中手工调整。</div>
         </section>
 
-        <section className="space-y-3 rounded border bg-white p-4 md:col-span-2">
+        <section className="space-y-3 rounded border bg-card p-4 md:col-span-2">
           <h2 className="font-medium">LLM 配置</h2>
           <ProviderForm
             provider={llmProvider}
@@ -396,12 +396,12 @@ export default function SettingsPage() {
               g4fModel, setG4fModel,
             }}
           />
-          <div className="text-xs text-neutral-600">出于安全考虑，已配置的密钥不会在此显示。填写后将覆盖保存。</div>
+          <div className="text-xs text-muted-foreground">出于安全考虑，已配置的密钥不会在此显示。填写后将覆盖保存。</div>
         </section>
       </div>
 
       {isLoading && (
-        <div className="text-sm text-neutral-600">加载配置中…</div>
+        <div className="text-sm text-muted-foreground">加载配置中…</div>
       )}
     </div>
   )
@@ -585,5 +585,5 @@ function ProviderForm({ provider, state }: {
     )
   }
 
-  return <div className="text-sm text-neutral-600">选择上方的 LLM 供应商以配置连接参数。</div>
+  return <div className="text-sm text-muted-foreground">选择上方的 LLM 供应商以配置连接参数。</div>
 }

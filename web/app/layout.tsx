@@ -5,16 +5,28 @@ import { Toaster } from '@/components/ui/sonner'
 import QueryProvider from '@/components/providers/query-provider'
 import { I18nProvider } from '@/components/providers/i18n-provider'
 import AppShell from '@/components/ui/app-shell'
+import Script from 'next/script'
+import { BRAND_NAME, BRAND_TAGLINE } from '@/lib/brand'
 
 export const metadata: Metadata = {
-  title: 'MoneyPrinterTurbo – Studio',
-  description: 'Next.js frontend for controllable short-video generation.'
+  title: `${BRAND_NAME} – Studio`,
+  description: BRAND_TAGLINE
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
       <body className="min-h-screen bg-background text-foreground antialiased">
+        <Script id="theme-init" strategy="beforeInteractive">
+          {`
+          try {
+            const t = localStorage.getItem('theme') || 'system';
+            const m = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const dark = t === 'dark' || (t === 'system' && m);
+            document.documentElement.classList.toggle('dark', dark);
+          } catch (e) {}
+          `}
+        </Script>
         <QueryProvider>
           <I18nProvider>
             <AppShell>
