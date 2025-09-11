@@ -121,6 +121,11 @@ def plan_segments_endpoint(request: Request, body: SegmentsPlanRequest):
         )
 
         # update task state
+        # unify audio duration in state with planned segments total to avoid UI mismatch
+        try:
+            seg_total = round(sum(float(getattr(s, 'duration', 0.0) or 0.0) for s in segments), 3)
+        except Exception:
+            seg_total = audio_duration
         sm.state.update_task(
             task_id,
             state=1,
@@ -128,7 +133,7 @@ def plan_segments_endpoint(request: Request, body: SegmentsPlanRequest):
             script=video_script,
             terms=video_terms,
             audio_file=audio_file,
-            audio_duration=audio_duration,
+            audio_duration=seg_total,
             subtitle_path=subtitle_path,
             materials=downloaded_videos,
             segments=[s.model_dump() for s in segments],
@@ -233,8 +238,17 @@ def save_segments_endpoint(request: Request, body: SegmentsRenderRequest):
         # persist to segments.json
         video_service.save_segments(task_id, body.segments)
 
+        # keep audio_duration consistent with segments sum to avoid UI mismatch
+        try:
+            seg_total = round(sum(float(getattr(s, 'duration', 0.0) or 0.0) for s in body.segments), 3)
+        except Exception:
+            seg_total = None
+
         # update state snapshot
-        sm.state.update_task(task_id, state=1, progress=100, segments=[s.model_dump() for s in body.segments])
+        if seg_total is not None and seg_total > 0:
+            sm.state.update_task(task_id, state=1, progress=100, segments=[s.model_dump() for s in body.segments], audio_duration=seg_total)
+        else:
+            sm.state.update_task(task_id, state=1, progress=100, segments=[s.model_dump() for s in body.segments])
 
         # pre-generate thumbs in background
         utils.run_in_background(video_service.ensure_thumbs, task_id)
@@ -435,6 +449,21 @@ def get_task(
     request_id = base.get_task_id(request)
     task = sm.state.get_task(task_id)
     if task:
+        # derive a consistent audio_duration when segments exist
+        try:
+            from app.services import video as video_service
+            _segs = video_service.load_segments(task_id)
+            _seg_total = 0.0
+            for _s in _segs:
+                try:
+                    _seg_total += float(getattr(_s, 'duration', 0.0) or (_s.get('duration', 0.0) if isinstance(_s, dict) else 0.0))
+                except Exception:
+                    continue
+            if _seg_total > 0:
+                task['audio_duration'] = round(float(_seg_total), 3)
+        except Exception:
+            pass
+
         task_dir = utils.task_dir()
 
         def file_to_uri(file):

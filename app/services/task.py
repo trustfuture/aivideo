@@ -89,7 +89,15 @@ def generate_audio(task_id, params, video_script):
         )
         return None, None, None
 
-    audio_duration = math.ceil(voice.get_audio_duration(sub_maker))
+    # prefer probing the written audio file for precise duration (float seconds)
+    try:
+        from moviepy.audio.io.AudioFileClip import AudioFileClip
+        _clip = AudioFileClip(audio_file)
+        audio_duration = float(getattr(_clip, "duration", 0.0) or 0.0)
+        _clip.close()
+    except Exception:
+        # fallback to internal offset-based duration without rounding
+        audio_duration = float(voice.get_audio_duration(sub_maker))
     return audio_file, audio_duration, sub_maker
 
 
@@ -312,11 +320,16 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
             video_concat_mode=params.video_concat_mode,
             max_clip_duration=params.video_clip_duration,
         )
+        # unify audio_duration with planned segments total to avoid UI mismatch
+        try:
+            _seg_total = round(sum(float(getattr(s, 'duration', 0.0) or 0.0) for s in segments), 3)
+        except Exception:
+            _seg_total = audio_duration
         kwargs = {
             "script": video_script,
             "terms": video_terms,
             "audio_file": audio_file,
-            "audio_duration": audio_duration,
+            "audio_duration": _seg_total,
             "materials": downloaded_videos,
             "segments": [s.__dict__ if hasattr(s, "__dict__") else s for s in segments],
         }
