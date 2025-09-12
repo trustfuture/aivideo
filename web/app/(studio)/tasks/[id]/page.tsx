@@ -2,7 +2,7 @@ import { get } from '@/lib/api'
 import { SegmentsPlanWrappedSchema, TaskDetailWrappedSchema, SegmentItem } from '@/lib/schemas'
 import dynamic from 'next/dynamic'
 
-const TaskDetailClient = dynamic(() => import('@/components/tasks/task-detail-client'), { ssr: false })
+const TaskDetailClient = dynamic(() => import('@/components/jobs/job-detail'), { ssr: false })
 
 interface Props { params: { id: string } }
 
@@ -38,3 +38,4 @@ export default async function TaskDetailPage({ params }: Props) {
     </div>
   )
 }
+

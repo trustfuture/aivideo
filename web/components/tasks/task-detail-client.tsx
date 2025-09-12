@@ -2,15 +2,17 @@
 import { useMemo, useState, useCallback } from 'react'
 import { get, post, request } from '@/lib/api'
 import { TaskStateSchema, TaskDetailWrappedSchema, SegmentItem, VideoParams } from '@/lib/schemas'
-import MvpTimeline from '@/components/timeline/mvp-timeline'
-import ShotlistEditor from '@/components/tasks/shotlist-editor'
+import SequenceEditor from '@/components/sequence/sequence-editor'
 import { useQuery } from '@tanstack/react-query'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { useUiStore } from '@/lib/store/ui'
 import { Progress } from '@/components/ui/progress'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { useI18n } from '@/components/providers/i18n-provider'
+import Link from 'next/link'
 
 type Props = {
   taskId: string
@@ -19,11 +21,13 @@ type Props = {
 }
 
 export default function TaskDetailClient({ taskId, initialTask, initialSegments }: Props) {
+  const { t } = useI18n()
   const router = useRouter()
+  const pathname = usePathname()
+  const basePath = pathname?.startsWith('/edit/video/tasks') ? '/edit/video/tasks' : '/tasks'
   const queryClient = useQueryClient()
   const setBusy = useUiStore(s => s.setBusy)
   const [segmentsState, setSegmentsState] = useState<SegmentItem[]>(initialSegments)
-  const [timelineKey, setTimelineKey] = useState<string>(() => JSON.stringify((initialSegments || []).map(s => s.segment_id)))
   const query = useQuery({
     queryKey: ['task', taskId],
     queryFn: async ({ signal }) => {
@@ -59,7 +63,6 @@ export default function TaskDetailClient({ taskId, initialTask, initialSegments 
       const json = await res.json()
       const segs = (json?.data?.segments || []) as SegmentItem[]
       setSegmentsState(segs)
-      setTimelineKey(JSON.stringify(segs.map((s: any) => s.segment_id)))
     } catch {
       // ignore
     }
@@ -80,7 +83,7 @@ export default function TaskDetailClient({ taskId, initialTask, initialSegments 
       toast.success('任务已删除')
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.removeQueries({ queryKey: ['task', taskId] })
-      router.push('/tasks')
+      router.push(basePath)
     },
     onSettled: () => setBusy(false)
   })
@@ -113,28 +116,34 @@ export default function TaskDetailClient({ taskId, initialTask, initialSegments 
           return j?.data
         }
       })
-      router.push(`/tasks/${newId}`)
+      router.push(`${basePath}/${newId}`)
     },
     onSettled: () => setBusy(false)
   })
 
+  // simplified view: no sticky logs/tabs
+  const [saveTplOpen, setSaveTplOpen] = useState(false)
+  const [duplicateOpen, setDuplicateOpen] = useState(false)
+
   return (
     <div className="space-y-4">
-      <div className="rounded border bg-card p-4 text-sm transition-all hover:shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            进度：{progress}%{' '}
-            {isProcessing && <span className="ml-2 text-xs text-muted-foreground">（自动刷新中）</span>}
-            {isFailed && <span className="ml-2 text-xs text-red-600">（失败）</span>}
+      {/* 头部状态条 */}
+      <div className="rounded border bg-card p-3 md:p-4 text-sm transition-all">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="font-medium">任务 {taskId.slice(0, 8)}</div>
+            <div>
+              进度：{progress}%{' '}
+              {isProcessing && <span className="ml-2 text-xs text-muted-foreground">（自动刷新中）</span>}
+              {isFailed && <span className="ml-2 text-xs text-red-600">（失败）</span>}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Progress value={progress} />
-            <Button size="sm" variant="outline" disabled={retryMutation.isPending} onClick={() => retryMutation.mutate()}>
-              重试
-            </Button>
-            <Button size="sm" variant="outline" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>
-              删除
-            </Button>
+            <Button size="sm" variant="outline" onClick={() => setSaveTplOpen(true)}>{t('actions.saveTemplate') || '保存为模板'}</Button>
+            <Button size="sm" variant="outline" onClick={() => setDuplicateOpen(true)}>{t('actions.duplicateTask') || '复刻为新任务'}</Button>
+            <Button size="sm" variant="outline" disabled={retryMutation.isPending} onClick={() => retryMutation.mutate()}>重试</Button>
+            <Button size="sm" variant="outline" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>删除</Button>
           </div>
         </div>
         {isFailed && (
@@ -143,7 +152,7 @@ export default function TaskDetailClient({ taskId, initialTask, initialSegments 
           </div>
         )}
         {(videos.length > 0 || combined.length > 0) && (
-          <div className="mt-2 flex flex-wrap gap-3">
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
             {videos.map((u, i) => (
               <a key={i} className="text-primary underline" href={u} target="_blank">成片{i + 1}</a>
             ))}
@@ -154,28 +163,55 @@ export default function TaskDetailClient({ taskId, initialTask, initialSegments 
         )}
       </div>
 
-      <section className="space-y-4">
-        <ShotlistEditor
-          taskId={taskId}
-          segments={segmentsState}
-          onApplied={() => {
-            // refresh timeline to reflect shotlist changes
-            refreshSegments()
-            // also refresh task state (progress/links)
-            queryClient.invalidateQueries({ queryKey: ['task', taskId] })
-          }}
-        />
-        <div className="h-px bg-muted" />
-        <h2 className="font-medium">分镜与时间线（MVP）</h2>
-        <MvpTimeline
-          key={timelineKey}
-          taskId={taskId}
-          initialSegments={segmentsState}
-          audioDuration={audioDuration}
-          disabledExternally={isProcessing}
-          baseParams={baseParams}
-        />
-      </section>
+      {/* 主区：仅时间线 + 分镜配置（简化） */}
+      <SequenceEditor
+        taskId={taskId}
+        segments={segmentsState}
+        audioDuration={audioDuration}
+        disabled={isProcessing}
+        baseParams={baseParams}
+        simple
+        onSaved={() => {
+          refreshSegments()
+          queryClient.invalidateQueries({ queryKey: ['task', taskId] })
+        }}
+      />
+
+      {/* 保存为模板占位对话框 */}
+      <Dialog open={saveTplOpen} onOpenChange={setSaveTplOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('dialog.comingSoon.title') || '即将上线'}</DialogTitle>
+            <DialogDescription>
+              {t('dialog.comingSoon.desc.saveTemplate') || '模板功能即将上线：可将当前任务参数保存为可复用模板，后续在创建页一键应用。'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button asChild variant="outline">
+              <Link href="/templates" onClick={() => setSaveTplOpen(false)}>{t('actions.goToTemplates') || '前往模板中心'}</Link>
+            </Button>
+            <Button onClick={() => setSaveTplOpen(false)}>{t('dialog.common.ok') || '我知道了'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 复刻为新任务占位对话框 */}
+      <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('dialog.comingSoon.title') || '即将上线'}</DialogTitle>
+            <DialogDescription>
+              {t('dialog.comingSoon.desc.duplicate') || '复刻功能即将上线：将以当前任务参数新建任务，后续可在创建页微调后提交。'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button asChild variant="outline">
+              <Link href="/templates" onClick={() => setDuplicateOpen(false)}>{t('actions.goToTemplates') || '前往模板中心'}</Link>
+            </Button>
+            <Button onClick={() => setDuplicateOpen(false)}>{t('dialog.common.ok') || '我知道了'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

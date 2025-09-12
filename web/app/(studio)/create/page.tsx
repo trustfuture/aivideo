@@ -1,6 +1,6 @@
 "use client"
 import { useRef, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
@@ -16,9 +16,20 @@ import { useEffect } from 'react'
 import { useUiStore } from '@/lib/store/ui'
 import { Progress } from '@/components/ui/progress'
 import { LoadingSpinner } from '@/components/ui/loading'
+import ChipsInput from '@/components/ui/chips-input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { useI18n } from '@/components/providers/i18n-provider'
+import Link from 'next/link'
+
+// Local type moved to module scope to avoid TSX parsing ambiguity
+type Mat = { name: string; file: string; duration?: number }
 
 export default function CreatePage() {
+  const { t } = useI18n()
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const baseTaskPath = pathname?.startsWith('/edit/video/create') ? '/edit/video/tasks' : '/tasks'
   const [isPending, startTransition] = useTransition()
   const busy = useUiStore(s => s.busy)
   const setBusy = useUiStore(s => s.setBusy)
@@ -31,7 +42,7 @@ export default function CreatePage() {
   const [videoSource, setVideoSource] = useState('pexels')
   const [script, setScript] = useState('')
   const [videoLanguage, setVideoLanguage] = useState('')
-  const [terms, setTerms] = useState('')
+  const [terms, setTerms] = useState<string[]>([])
   const [errors, setErrors] = useState<string[]>([])
   const queryClient = useQueryClient()
 
@@ -52,7 +63,6 @@ export default function CreatePage() {
   const [uploadingBgm, setUploadingBgm] = useState(false)
   const [bgmUploadProgress, setBgmUploadProgress] = useState(0)
   // Local materials (when video_source = 'local') — only track current-session uploads
-  type Mat = { name: string; file: string; duration?: number }
   const [materials, setMaterials] = useState<Mat[]>([])
   const [selectedMaterialFiles, setSelectedMaterialFiles] = useState<Set<string>>(new Set())
   const [uploadingMaterials, setUploadingMaterials] = useState(false)
@@ -60,6 +70,56 @@ export default function CreatePage() {
   const [materialsUploadingName, setMaterialsUploadingName] = useState<string>('')
 
   const createAbortRef = useRef<AbortController | null>(null)
+
+  // Presets
+  function applyPreset(preset: 'vertical_fast' | 'horizontal_narration' | 'square_social') {
+    if (preset === 'vertical_fast') {
+      setVideoAspect('9:16')
+      setClipDuration(5)
+      setConcatMode('random')
+      setTransitionMode(null)
+    } else if (preset === 'horizontal_narration') {
+      setVideoAspect('16:9')
+      setClipDuration(5)
+      setConcatMode('sequential')
+      setTransitionMode('FadeIn')
+    } else if (preset === 'square_social') {
+      setVideoAspect('1:1')
+      setClipDuration(4)
+      setConcatMode('random')
+      setTransitionMode(null)
+    }
+  }
+
+  // Section open state with localStorage persistence
+  function readOpen(key: string, fallback: boolean) {
+    if (typeof window === 'undefined') return fallback
+    const v = localStorage.getItem(key)
+    return v == null ? fallback : v === '1'
+  }
+  function writeOpen(key: string, v: boolean) {
+    if (typeof window === 'undefined') return
+    localStorage.setItem(key, v ? '1' : '0')
+  }
+  const [openBasic, setOpenBasic] = useState<boolean>(() => readOpen('create:sec:basic', true))
+  const [openMaterial, setOpenMaterial] = useState<boolean>(() => readOpen('create:sec:material', true))
+  const [openCopy, setOpenCopy] = useState<boolean>(() => readOpen('create:sec:copy', true))
+  const [openAudio, setOpenAudio] = useState<boolean>(() => readOpen('create:sec:audio', true))
+  const [openAdvanced, setOpenAdvanced] = useState<boolean>(() => readOpen('create:sec:advanced', false))
+  const [applyTplOpen, setApplyTplOpen] = useState(false)
+
+  // open apply-template dialog via query param
+  useEffect(() => {
+    if (searchParams?.get('applyTemplate') === '1') {
+      setApplyTplOpen(true)
+    }
+  }, [searchParams])
+
+  useEffect(() => { writeOpen('create:sec:basic', openBasic) }, [openBasic])
+  useEffect(() => { writeOpen('create:sec:material', openMaterial) }, [openMaterial])
+  useEffect(() => { writeOpen('create:sec:copy', openCopy) }, [openCopy])
+  useEffect(() => { writeOpen('create:sec:audio', openAudio) }, [openAudio])
+  useEffect(() => { writeOpen('create:sec:advanced', openAdvanced) }, [openAdvanced])
 
   const Schema = z.object({
     video_subject: z.string().min(1, '主题不能为空'),
@@ -75,7 +135,7 @@ export default function CreatePage() {
     voice_name: z.string().optional(),
     voice_rate: z.number().min(0.5).max(2).optional(),
     voice_volume: z.number().min(0.6).max(5.0).optional(),
-    video_terms: z.string().optional().nullable(),
+    video_terms: z.union([z.string(), z.array(z.string())]).optional().nullable(),
     video_materials: z.array(z.object({ url: z.string(), provider: z.string().optional(), duration: z.number().optional().nullable() })).optional(),
     bgm_type: z.enum(['none', 'random', 'custom']),
     bgm_file: z.string().optional().nullable(),
@@ -170,7 +230,7 @@ export default function CreatePage() {
       voice_name: voiceName || 'zh-CN-XiaoyiNeural-Female',
       voice_rate: Number(voiceRate) || 1.0,
       voice_volume: Number(voiceVolume) || 1.0,
-      video_terms: terms || undefined,
+      video_terms: (terms && terms.length > 0) ? terms : undefined,
       bgm_type: bgmType,
       bgm_file: bgmType === 'custom' ? (bgmFile || undefined) : undefined,
       bgm_volume: Number(bgmVolume)
@@ -225,7 +285,7 @@ export default function CreatePage() {
           return p.data.data
         }
       })
-      router.push(`/tasks/${taskId}`)
+      router.push(`${baseTaskPath}/${taskId}`)
     } catch (e: any) {
       if (e?.name === 'AbortError') {
         toast.info('已取消创建请求')
@@ -239,14 +299,30 @@ export default function CreatePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">新建任务</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold">新建任务</h1>
+        <div className="hidden md:flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">预设：</span>
+          <Button size="sm" variant="secondary" onClick={() => applyPreset('vertical_fast')}>竖屏快节奏</Button>
+          <Button size="sm" variant="secondary" onClick={() => applyPreset('horizontal_narration')}>横屏解说</Button>
+          <Button size="sm" variant="secondary" onClick={() => applyPreset('square_social')}>方形社媒</Button>
+          <div className="mx-2 h-4 w-px bg-border" />
+          <Button size="sm" variant="outline" onClick={() => setApplyTplOpen(true)}>{t('actions.applyTemplate') || '从模板应用'}</Button>
+        </div>
+      </div>
       {errors.length > 0 && (
         <div className="rounded border border-red-200 bg-red-50 p-2 text-sm text-red-700">
           {errors.map((e, i) => <div key={i}>{e}</div>)}
         </div>
       )}
       <div className="grid gap-4 md:grid-cols-2">
+        {/* 左栏：表单 */}
         <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">基础</div>
+            <Button size="sm" variant="ghost" onClick={() => setOpenBasic(v => !v)}>{openBasic ? '收起' : '展开'}</Button>
+          </div>
+          <div className={openBasic ? 'space-y-3' : 'space-y-3 hidden'}>
           <div className="space-y-1">
             <Label htmlFor="subject">主题</Label>
             <Input id="subject" value={videoSubject} onChange={(e) => setVideoSubject(e.target.value)} placeholder="请输入视频主题" />
@@ -339,6 +415,12 @@ export default function CreatePage() {
               </Select>
             </div>
           </div>
+          </div>{/* 基础 end */}
+          <div className="flex items-center justify-between pt-2">
+            <div className="text-sm font-medium">素材</div>
+            <Button size="sm" variant="ghost" onClick={() => setOpenMaterial(v => !v)}>{openMaterial ? '收起' : '展开'}</Button>
+          </div>
+          <div className={openMaterial ? 'space-y-3' : 'space-y-3 hidden'}>
           <div className="space-y-1">
             <Label htmlFor="source">素材来源</Label>
             <Select value={videoSource} onValueChange={setVideoSource}>
@@ -417,7 +499,13 @@ export default function CreatePage() {
               )}
             </div>
           )}
+          </div>{/* 素材 end */}
 
+          <div className="flex items-center justify-between pt-2">
+            <div className="text-sm font-medium">音频与字幕</div>
+            <Button size="sm" variant="ghost" onClick={() => setOpenAudio(v => !v)}>{openAudio ? '收起' : '展开'}</Button>
+          </div>
+          <div className={openAudio ? 'space-y-3' : 'space-y-3 hidden'}>
           <div className="space-y-1">
             <Label>音频/TTS 服务器</Label>
             <Select value={ttsServer} onValueChange={(v) => setTtsServer(v as any)}>
@@ -484,9 +572,15 @@ export default function CreatePage() {
               }
             }}>{busy ? (<span className="inline-flex items-center gap-2"><LoadingSpinner size={14} /> 处理中…</span>) : '试听'}</Button>
           </div>
+          </div>{/* 音频与字幕 end */}
         </div>
 
         <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-medium">文案</div>
+            <Button size="sm" variant="ghost" onClick={() => setOpenCopy(v => !v)}>{openCopy ? '收起' : '展开'}</Button>
+          </div>
+          <div className={openCopy ? 'space-y-3' : 'space-y-3 hidden'}>
           <div className="space-y-1">
             <Label htmlFor="script">可选：自定义脚本</Label>
             <Textarea id="script" value={script} onChange={(e) => setScript(e.target.value)} placeholder="留空将自动生成脚本与音频" />
@@ -508,7 +602,7 @@ export default function CreatePage() {
                 if (!tres.ok) throw new Error(tjson?.message || '生成关键词失败')
                 const tParsed = VideoTermsWrappedSchema.safeParse(tjson)
                 if (!tParsed.success) throw new Error('解析关键词失败')
-                setTerms((tParsed.data.data.video_terms || []).join(', '))
+                setTerms(((tParsed.data.data.video_terms || []) as string[]).filter(Boolean))
                 toast.success('脚本与关键词已生成')
               } catch (e: any) {
                 toast.error(e?.message || '生成失败')
@@ -525,7 +619,7 @@ export default function CreatePage() {
                 if (!tres.ok) throw new Error(tjson?.message || '生成关键词失败')
                 const tParsed = VideoTermsWrappedSchema.safeParse(tjson)
                 if (!tParsed.success) throw new Error('解析关键词失败')
-                setTerms((tParsed.data.data.video_terms || []).join(', '))
+                setTerms(((tParsed.data.data.video_terms || []) as string[]).filter(Boolean))
                 toast.success('关键词已生成')
               } catch (e: any) {
                 toast.error(e?.message || '生成失败')
@@ -535,11 +629,12 @@ export default function CreatePage() {
             }}>{busy ? (<span className="inline-flex items-center gap-2"><LoadingSpinner size={14} /> 生成中…</span>) : '仅关键词'}</Button>
           </div>
           <div className="space-y-1">
-            <Label htmlFor="terms">关键词（逗号分隔，可选）</Label>
-            <Textarea id="terms" value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="如 forest, sunrise, city" />
+            <Label>关键词（回车或逗号添加，可选）</Label>
+            <ChipsInput value={terms} onChange={setTerms} placeholder="如 forest, sunrise, city" />
           </div>
+          </div>{/* 文案 end */}
 
-          <div className="space-y-1">
+          <div className={openAudio ? 'space-y-1' : 'space-y-1 hidden'}>
             <Label>背景音乐</Label>
             <Select value={bgmType} onValueChange={(v) => setBgmType(v as any)}>
               <SelectTrigger>
@@ -554,7 +649,7 @@ export default function CreatePage() {
           </div>
 
           {bgmType === 'custom' && (
-            <div className="space-y-2">
+            <div className={openAudio ? 'space-y-2' : 'space-y-2 hidden'}>
               <Label>选择本地音乐（resource/songs）</Label>
               <Select value={bgmFile} onValueChange={setBgmFile}>
                 <SelectTrigger>
@@ -611,7 +706,7 @@ export default function CreatePage() {
             </div>
           )}
 
-          <div className="space-y-1">
+          <div className={openAudio ? 'space-y-1' : 'space-y-1 hidden'}>
             <Label>BGM 音量</Label>
             <Select value={String(bgmVolume)} onValueChange={(v) => setBgmVolume(parseFloat(v))}>
               <SelectTrigger>
@@ -625,15 +720,67 @@ export default function CreatePage() {
             </Select>
           </div>
         </div>
+        {/* 右栏：预览 / 参数摘要 / 快捷操作 */}
+        <aside className="hidden md:block space-y-3">
+          <div className="rounded border bg-card p-3 sticky top-4">
+            <div className="mb-2 text-sm font-medium">预览</div>
+            <div className="mb-3 aspect-video w-full rounded bg-muted" />
+            <div className="mb-2 text-sm font-medium">参数摘要</div>
+            <ul className="mb-3 text-sm text-muted-foreground space-y-1">
+              <li>主题：{videoSubject || '—'}</li>
+              <li>画幅：{videoAspect}</li>
+              <li>单段时长：{clipDuration}s</li>
+              <li>数量：{videoCount}</li>
+              <li>拼接：{concatMode === 'random' ? '随机' : '顺序'}</li>
+              <li>转场：{transitionMode || '无'}</li>
+              <li>素材来源：{videoSource}</li>
+              <li>TTS：{ttsServer} · {voiceName || '默认'}</li>
+              <li>BGM：{bgmType}{bgmFile ? ` · ${bgmFile}` : ''}（音量 {bgmVolume}）</li>
+            </ul>
+            <div className="flex items-center gap-2">
+              <Button disabled={isPending || busy} onClick={() => startTransition(() => create('plan'))}>
+                {(isPending || busy) ? (<span className="inline-flex items-center gap-2"><LoadingSpinner size={14} /> 处理中…</span>) : '仅生成分镜'}
+              </Button>
+              <Button disabled={isPending || busy} variant="outline" onClick={() => startTransition(() => create('video'))}>
+                {(isPending || busy) ? (<span className="inline-flex items-center gap-2"><LoadingSpinner size={14} /> 处理中…</span>) : '一键生成视频'}
+              </Button>
+            </div>
+          </div>
+        </aside>
       </div>
 
-      <div className="flex gap-3">
-        <Button disabled={isPending || busy} onClick={() => startTransition(() => create('plan'))}>{(isPending || busy) ? (<span className="inline-flex items-center gap-2"><LoadingSpinner size={14} /> 处理中…</span>) : '仅生成分镜'}</Button>
-        <Button disabled={isPending || busy} variant="outline" onClick={() => startTransition(() => create('video'))}>{(isPending || busy) ? (<span className="inline-flex items-center gap-2"><LoadingSpinner size={14} /> 处理中…</span>) : '一键生成视频'}</Button>
-        {isPending && (
-          <Button variant="ghost" onClick={() => createAbortRef.current?.abort()}>取消</Button>
-        )}
+      {/* Sticky Footer 主操作 */}
+      <div className="sticky bottom-0 left-0 right-0 z-30 border-t bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2">
+          <Button disabled={isPending || busy} onClick={() => startTransition(() => create('plan'))}>
+            {(isPending || busy) ? (<span className="inline-flex items-center gap-2"><LoadingSpinner size={14} /> 处理中…</span>) : '仅生成分镜'}
+          </Button>
+          <Button disabled={isPending || busy} variant="outline" onClick={() => startTransition(() => create('video'))}>
+            {(isPending || busy) ? (<span className="inline-flex items-center gap-2"><LoadingSpinner size={14} /> 处理中…</span>) : '一键生成视频'}
+          </Button>
+          {(isPending || busy) && (
+            <Button variant="ghost" onClick={() => createAbortRef.current?.abort()}>取消</Button>
+          )}
+        </div>
       </div>
+
+      {/* 从模板应用：占位对话框 */}
+      <Dialog open={applyTplOpen} onOpenChange={setApplyTplOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('dialog.comingSoon.title') || '即将上线'}</DialogTitle>
+            <DialogDescription>
+              {t('dialog.comingSoon.desc.applyTemplate') || '从模板应用功能即将上线。'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button asChild variant="outline">
+              <Link href="/templates" onClick={() => setApplyTplOpen(false)}>{t('actions.goToTemplates') || '前往模板中心'}</Link>
+            </Button>
+            <Button onClick={() => setApplyTplOpen(false)}>{t('dialog.common.ok') || '我知道了'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

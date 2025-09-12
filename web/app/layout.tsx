@@ -4,7 +4,6 @@ import { ReactNode } from 'react'
 import { Toaster } from '@/components/ui/sonner'
 import QueryProvider from '@/components/providers/query-provider'
 import { I18nProvider } from '@/components/providers/i18n-provider'
-import AppShell from '@/components/ui/app-shell'
 import Script from 'next/script'
 import { BRAND_NAME, BRAND_TAGLINE } from '@/lib/brand'
 
@@ -35,9 +34,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         </Script>
         <QueryProvider>
           <I18nProvider>
-            <AppShell>
-              {children}
-            </AppShell>
+            {children}
             <Toaster richColors closeButton position="top-center" />
           </I18nProvider>
         </QueryProvider>

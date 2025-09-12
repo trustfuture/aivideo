@@ -3,6 +3,15 @@
   "nav.home": "Home",
   "nav.tasks": "Tasks",
   "nav.create": "Create",
-  "nav.settings": "Settings"
+  "nav.settings": "Settings",
+  "actions.saveTemplate": "Save as Template",
+  "actions.duplicateTask": "Duplicate as New Task",
+  "dialog.comingSoon.title": "Coming Soon",
+  "dialog.comingSoon.desc.saveTemplate": "Template feature is coming soon: save current task params as a reusable template to quickly apply on create page.",
+  "dialog.comingSoon.desc.duplicate": "Duplicate feature is coming soon: it will create a new task with current params so you can tweak and submit.",
+  "dialog.comingSoon.desc.applyTemplate": "Apply from Template is coming soon: you will be able to select a template to auto-fill the form. You can also visit Templates to browse.",
+  "dialog.common.ok": "Got it",
+  "actions.applyTemplate": "Apply from Template",
+  "actions.goToTemplates": "Go to Templates",
+  "cmd.templates": "Templates"
 }
-

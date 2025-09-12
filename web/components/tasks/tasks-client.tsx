@@ -1,7 +1,7 @@
 "use client"
 import Link from 'next/link'
 import { useMemo } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import { useQuery, keepPreviousData, useQueryClient, useMutation } from '@tanstack/react-query'
 import { get } from '@/lib/api'
 import { TasksWrappedSchema, TaskItem } from '@/lib/schemas'
@@ -23,7 +23,10 @@ async function fetchTasks(page: number, pageSize: number, signal?: AbortSignal):
 export default function TasksClient() {
   const searchParams = useSearchParams()
   const router = useRouter()
+  const pathname = usePathname()
   const queryClient = useQueryClient()
+
+  const basePath = pathname?.startsWith('/edit/video/tasks') ? '/edit/video/tasks' : '/tasks'
 
   const page = Math.max(1, Number(searchParams.get('page') || '1'))
   const pageSize = Math.max(1, Math.min(50, Number(searchParams.get('page_size') || '10')))
@@ -49,7 +52,7 @@ export default function TasksClient() {
     const params = new URLSearchParams(searchParams)
     params.set('page', String(next))
     params.set('page_size', String(page_size))
-    router.push(`/tasks?${params.toString()}`)
+    router.push(`${basePath}?${params.toString()}`)
   }
 
   const nextPage = useMemo(() => Math.min(totalPages, p + 1), [p, totalPages])
@@ -127,7 +130,7 @@ export default function TasksClient() {
           return json?.data
         }
       })
-      router.push(`/tasks/${newId}`)
+      router.push(`${basePath}/${newId}`)
     },
     onError: (err: any) => {
       toast.error(err?.message || '重试失败')
@@ -165,7 +168,7 @@ export default function TasksClient() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Link className="rounded border px-3 py-1" href={`/tasks/${t.task_id}`}>详情</Link>
+                  <Link className="rounded border px-3 py-1" href={`${basePath}/${t.task_id}`}>详情</Link>
                   <Button
                     variant="outline"
                     onClick={() => retryMutation.mutate(t.task_id)}

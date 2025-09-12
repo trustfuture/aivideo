@@ -51,7 +51,8 @@ class _Config:
 class MaterialInfo:
     provider: str = "pexels"
     url: str = ""
-    duration: int = 0
+    # use float to allow fractional seconds from local/third-party probes
+    duration: float = 0.0
     thumb: str = ""
 
 
@@ -121,6 +122,18 @@ class SegmentItem(BaseModel):
     style: Optional[str] = ""
     # duration of this segment in seconds
     duration: float
+    # subtitle offset (seconds) applied only within this segment window during final render
+    subtitle_offset: Optional[float] = None
+    # per-segment subtitle overrides (None means inherit global VideoParams)
+    subtitle_enabled: Optional[bool] = None
+    subtitle_position: Optional[str] = None  # bottom | top | center | custom
+    custom_position: Optional[float] = None  # percentage 0-100
+    font_name: Optional[str] = None
+    font_size: Optional[int] = None
+    text_fore_color: Optional[str] = None
+    stroke_color: Optional[str] = None
+    stroke_width: Optional[float] = None
+    text_background_color: Optional[Union[bool, str]] = None
     # transition name, follow VideoTransitionMode values; None means inherit/global
     transition: Optional[str] = None
     # transition parameters
@@ -251,6 +264,67 @@ class AudioRequest(BaseModel):
     video_source: Optional[str] = "local"
 
 
+class SubtitleSuggestRequest(BaseModel):
+    task_id: str
+    segment_id: Optional[str] = None
+    order: Optional[int] = None
+    mode: Optional[str] = "polish"  # polish|simplify|translate-zh|translate-en
+    target_language: Optional[str] = ""  # optional target language code/name when translating
+
+
+class BaseResponse(BaseModel):
+    status: int = 200
+    message: Optional[str] = "success"
+    data: Any = None
+
+
+class SubtitleSuggestResponse(BaseResponse):
+    class Data(BaseModel):
+        task_id: str
+        segment_id: Optional[str] = None
+        order: Optional[int] = None
+        mode: str
+        original_text: str
+        suggestion: str
+
+    data: Data
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": 200,
+                "message": "success",
+                "data": {
+                    "task_id": "123e4567",
+                    "segment_id": "seg-3",
+                    "order": 3,
+                    "mode": "polish",
+                    "original_text": "原字幕文本",
+                    "suggestion": "润色后的字幕文本",
+                },
+            }
+        }
+
+
+class SubtitleRewriteRequest(BaseModel):
+    task_id: str
+    segment_id: Optional[str] = None
+    order: Optional[int] = None
+    mode: Optional[str] = "polish"
+    suggestion: Optional[str] = None  # if provided, use directly without LLM
+    apply: Optional[bool] = True
+    target_language: Optional[str] = ""
+
+
+class SubtitleOverridesListResponse(BaseResponse):
+    class Data(BaseModel):
+        task_id: str
+        segment_id: str
+        applied: Optional[str] = None  # version filename
+        versions: list
+
+    data: Data
+
+
 class VideoScriptParams:
     """
     {
@@ -281,10 +355,7 @@ class VideoTermsParams:
     amount: Optional[int] = 5
 
 
-class BaseResponse(BaseModel):
-    status: int = 200
-    message: Optional[str] = "success"
-    data: Any = None
+    
 
 
 class TaskVideoRequest(VideoParams, BaseModel):

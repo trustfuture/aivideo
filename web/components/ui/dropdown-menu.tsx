@@ -34,7 +34,8 @@ const DropdownMenuSubContent = React.forwardRef<
     ref={ref}
     className={cn(
       // Solid background to prevent transparency overlap
-      'z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground p-1 shadow-lg',
+      // 强制不透明背景，避免看到背后的文本
+      'z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover bg-[hsl(var(--popover)/1)] text-popover-foreground p-1 shadow-lg backdrop-blur-none',
       className
     )}
     {...props}
@@ -52,7 +53,8 @@ const DropdownMenuContent = React.forwardRef<
       sideOffset={sideOffset}
       className={cn(
         // Solid background to prevent transparency overlap
-        'z-50 min-w-[10rem] overflow-hidden rounded-md border bg-popover text-popover-foreground p-1 shadow-md animate-in fade-in-0 zoom-in-95',
+        // 强制不透明背景，避免看到背后的文本
+        'z-50 min-w-[10rem] overflow-hidden rounded-md border bg-popover bg-[hsl(var(--popover)/1)] text-popover-foreground p-1 shadow-md animate-in fade-in-0 zoom-in-95 backdrop-blur-none',
         className
       )}
       {...props}

@@ -36,10 +36,48 @@
 - Mock external I/O (LLMs, TTS, network, filesystem); use `test/resources/` for fixtures.
 
 ## Commit & Pull Request Guidelines
-- Use Conventional Commit prefixes: `feat:`, `fix:`, `perf:`, `refactor:`, `docs:`, `chore:`.
-- Commits should be small and scoped; include rationale when behavior changes.
-- PRs must include: summary, motivation, test coverage notes, run instructions, and screenshots for UI changes.
-- Link related issues and note config impacts (e.g., `config.toml` keys).
+- Conventional Commits: use `type(scope): subject` where `type` ∈ `feat`, `fix`, `perf`, `refactor`, `docs`, `chore`, `test`, `build`, `ci`.
+- Keep commits small and focused; avoid mixing unrelated changes. Include rationale when behavior changes.
+- PRs must include: summary, motivation, change list, test coverage notes, run instructions, and screenshots for UI changes.
+- Link related issues and note config impacts (e.g., `config.toml` keys). Use `Closes #123` to auto-close.
+
+### Git Workflow / 分支规范
+- Default branch: `main` (protected). Do not push directly; open a PR.
+- Branch naming:
+  - Features: `feat/<scope>-<short-desc>` (e.g., `feat/video-trim`)
+  - Fixes: `fix/<scope>-<issue>` (e.g., `fix/webui-scroll`) 
+  - Chores/Docs: `chore/...`, `docs/...`
+  - Releases: `release/vX.Y.Z` and hotfixes `hotfix/vX.Y.Z`
+- Update strategy: rebase your branch on `main` before opening a PR (`git fetch; git rebase origin/main`). Avoid merge commits in feature branches.
+- Merging: prefer "Squash and merge" with a clean, single commit message derived from the PR title/description.
+
+### Commit Message Format / 提交信息格式
+- Format: `type(scope)!: short summary` (≤ 72 chars). Add a body for context and a footer for metadata.
+- Body: explain the why vs. what; reference design decisions and trade-offs.
+- Footer:
+  - Breaking changes: `BREAKING CHANGE: ...`
+  - Issue links: `Closes #123`, `Refs #456`
+  - Sign-off (optional DCO): `Signed-off-by: Name <email>`
+
+### PR Checklist / 提交合并请求检查项
+- Title follows Conventional Commits summary style; scope is meaningful.
+- Description includes: motivation, approach, alternatives considered, and risk analysis.
+- Tests: added/updated for new behavior; all tests pass locally (`python -m unittest discover -s test`).
+- Lint/Type checks pass (Python style per PEP 8; frontend `pnpm lint` if applicable).
+- Docs updated where needed (e.g., `docs/*`, inline docstrings, `AGENTS.md`).
+- Config/infra impacts noted (e.g., `config.toml` keys, Docker, CI).
+- UI changes include screenshots or a short clip.
+
+### Code Review / 评审要求
+- At least one reviewer approval; authors should self-review before requesting review.
+- Address all comments or resolve with rationale; keep discussion on-record.
+- If you push substantial changes after approval, re-request review.
+- Prefer small PRs; if > ~300 LOC changed, consider splitting.
+
+### CI & Quality Gates / 质量门禁
+- All CI checks must pass: unit tests, lint, and build steps where applicable.
+- No committed secrets or large binaries; respect `.gitignore` and keep `storage/` out of Git.
+- For releases, tag versions using SemVer (`vX.Y.Z`) and include succinct release notes.
 
 ## Frontend (@web) Guidelines
 - Location: `web/` (Next.js 14, App Router, TypeScript, Tailwind v4, shadcn‑ui).

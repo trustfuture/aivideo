@@ -104,7 +104,7 @@ export default function ShotlistEditor({ taskId, segments, onApplied }: { taskId
         </div>
       </div>
       <div className="rounded border bg-card">
-        <div className="grid grid-cols-[3rem,1.2fr,8rem,2fr,8rem,7rem] items-center gap-2 border-b p-2 text-xs text-muted-foreground">
+        <div className="grid grid-cols-[3rem,1.2fr,7rem,1.5fr,7rem,6rem] items-center gap-1.5 border-b p-1.5 text-xs text-muted-foreground">
           <div>#</div>
           <div>场景标题</div>
           <div>镜头序号</div>
@@ -114,7 +114,7 @@ export default function ShotlistEditor({ taskId, segments, onApplied }: { taskId
         </div>
         <ul>
           {rows.map((r, i) => (
-            <li key={i} className="grid grid-cols-[3rem,1.2fr,8rem,2fr,8rem,7rem] items-center gap-2 border-b p-2 text-sm">
+            <li key={i} className="grid grid-cols-[3rem,1.2fr,7rem,1.5fr,7rem,6rem] items-center gap-1.5 border-b p-1.5 text-sm">
               <div className="text-muted-foreground">#{i + 1}</div>
               <Input value={r.scene_title || ''} onChange={(e) => update(i, 'scene_title', e.target.value)} placeholder="场景标题" />
               <Input value={r.shot_no || ''} onChange={(e) => update(i, 'shot_no', e.target.value)} placeholder="如 1A" />

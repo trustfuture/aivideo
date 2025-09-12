@@ -3,6 +3,15 @@
   "nav.home": "主页",
   "nav.tasks": "任务",
   "nav.create": "新建",
-  "nav.settings": "设置"
+  "nav.settings": "设置",
+  "actions.saveTemplate": "保存为模板",
+  "actions.duplicateTask": "复刻为新任务",
+  "dialog.comingSoon.title": "即将上线",
+  "dialog.comingSoon.desc.saveTemplate": "模板功能即将上线：可将当前任务参数保存为可复用模板，后续在创建页一键应用。",
+  "dialog.comingSoon.desc.duplicate": "复刻功能即将上线：将以当前任务参数新建任务，后续可在创建页微调后提交。",
+  "dialog.comingSoon.desc.applyTemplate": "从模板应用功能即将上线：可在此选择模板一键填充表单。你也可以先前往模板中心查看模板列表。",
+  "dialog.common.ok": "我知道了",
+  "actions.applyTemplate": "从模板应用",
+  "actions.goToTemplates": "前往模板中心",
+  "cmd.templates": "模板中心"
 }
-

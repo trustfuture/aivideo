@@ -381,6 +381,12 @@ def plan_segments(
             idx = 0
         base_seg = base[idx]
         # create a copy with new order and id to reflect timeline position
+        # fit this segment within remaining audio when near the end
+        remaining = max(0.0, float(audio_duration) - float(total))
+        seg_dur = min(float(base_seg.duration), float(max_clip_duration), remaining)
+        # skip too tiny tail fragments (< 0.06s) to avoid numerical noise
+        if seg_dur < 0.06:
+            break
         new_seg = SegmentItem(
             segment_id=f"seg-{len(planned)+1}",
             order=len(planned) + 1,
@@ -388,18 +394,18 @@ def plan_segments(
             shot_no=base_seg.shot_no,
             shot_desc=base_seg.shot_desc,
             style=base_seg.style,
-            duration=min(base_seg.duration, max_clip_duration),
+            duration=float(seg_dur),
             transition=base_seg.transition,
             speed=base_seg.speed,
             fit=base_seg.fit,
             material=base_seg.material,
-            start=base_seg.start,
-            end=base_seg.start + min(base_seg.duration, max_clip_duration),
+            start=float(base_seg.start),
+            end=float(base_seg.start) + float(seg_dur),
             width=base_seg.width,
             height=base_seg.height,
         )
         planned.append(new_seg)
-        total += new_seg.duration
+        total += float(new_seg.duration)
         idx += 1
 
     save_segments(task_id, planned)
@@ -659,6 +665,7 @@ def render_from_segments(
             subtitle_path=subtitle_path,
             output_file=final_video_path,
             params=params,
+            segments=segments,
         )
         return combined_video_path, final_video_path
 
@@ -937,6 +944,7 @@ def generate_video(
     subtitle_path: str,
     output_file: str,
     params: VideoParams,
+    segments: List[SegmentItem] | List[dict] | None = None,
 ):
     # Validate input video exists and is non-empty before proceeding
     if not os.path.exists(video_path) or os.path.getsize(video_path) == 0:
@@ -1032,14 +1040,264 @@ def generate_video(
             shift = float(getattr(params, "subtitle_offset", 0.0) or 0.0)
         except Exception:
             shift = 0.0
-        for item in sub.subtitles:
-            if shift != 0:
+        # build segment windows on the final combined timeline when provided
+        # Build segment windows with optional style overrides and check for overrides
+        windows = []
+        overrides = {}
+        if segments:
+            try:
+                # tolerate raw dict or pydantic model
+                ordered = sorted(segments, key=lambda x: (x.order if hasattr(x, 'order') else x.get('order', 0)))
+            except Exception:
                 try:
-                    item = ((item[0][0] + shift, item[0][1] + shift), item[1])
+                    ordered = sorted(segments, key=lambda x: (x.get('order', 0)))  # type: ignore
+                except Exception:
+                    ordered = []
+            t = 0.0
+            for s in ordered:
+                try:
+                    dur = float(getattr(s, 'duration', 0.0) if hasattr(s, 'duration') else s.get('duration', 0.0) or 0.0)
+                except Exception:
+                    dur = 0.0
+                try:
+                    soff = float(getattr(s, 'subtitle_offset', 0.0) if hasattr(s, 'subtitle_offset') else s.get('subtitle_offset', 0.0) or 0.0)
+                except Exception:
+                    soff = 0.0
+                if dur <= 0:
+                    continue
+                # collect style overrides per segment (all optional)
+                def _get(name, default=None):
+                    try:
+                        return getattr(s, name)
+                    except Exception:
+                        try:
+                            return (s.get(name) if isinstance(s, dict) else default)
+                        except Exception:
+                            return default
+                style = {
+                    'subtitle_position': _get('subtitle_position', None),
+                    'custom_position': _get('custom_position', None),
+                    'font_name': _get('font_name', None),
+                    'font_size': _get('font_size', None),
+                    'text_fore_color': _get('text_fore_color', None),
+                    'stroke_color': _get('stroke_color', None),
+                    'stroke_width': _get('stroke_width', None),
+                    'text_background_color': _get('text_background_color', None),
+                }
+                seg_enabled = _get('subtitle_enabled', None)
+                seg_id = _get('segment_id', None)
+                ws, we = t, t + dur
+                # check override file for this segment
+                ov_items = None
+                try:
+                    if seg_id:
+                        ov_path = os.path.join(utils.task_dir(task_id), 'sub_overrides', str(seg_id), 'applied.srt')
+                        if os.path.exists(ov_path):
+                            # parse srt to items relative to window (we'll offset by ws below)
+                            # simple parser: collect ((t0,t1), text) where t0/t1 are relative seconds
+                            # use local helper
+                            def _parse_srt(path):
+                                out = []
+                                with open(path, 'r', encoding='utf-8') as fd:
+                                    buf = []
+                                    for line in fd:
+                                        line = line.rstrip('\n')
+                                        if line.strip() == '':
+                                            if len(buf) >= 2:
+                                                tl = buf[1]
+                                                if '-->' in tl:
+                                                    ss = tl.split('-->')[0].strip()
+                                                    es = tl.split('-->')[1].strip()
+                                                    def _to_sec(s):
+                                                        try:
+                                                            h, m, rest = s.split(':', 2)
+                                                            sec, ms = rest.split(',', 1)
+                                                            return int(h)*3600 + int(m)*60 + int(sec) + int(ms)/1000.0
+                                                        except Exception:
+                                                            return 0.0
+                                                    t0r = _to_sec(ss)
+                                                    t1r = _to_sec(es)
+                                                    txt = ' '.join(x for x in buf[2:] if x)
+                                                    out.append(((t0r, t1r), txt))
+                                            buf = []
+                                        else:
+                                            buf.append(line)
+                                return out
+                            ov_items = _parse_srt(ov_path)
+                            overrides[str(seg_id)] = ov_items
                 except Exception:
                     pass
-            clip = create_text_clip(subtitle_item=item)
+                windows.append((ws, we, soff, style, seg_enabled, str(seg_id) if seg_id else None, ov_items))
+                t += dur
+        for item in sub.subtitles:
+            try:
+                t0, t1 = float(item[0][0]), float(item[0][1])
+                eff_shift = shift
+                item_style = None
+                item_enabled = True
+                skip_due_to_override = False
+                seg_id_for_item = None
+                if windows:
+                    mid = (t0 + t1) / 2.0
+                    for (ws, we, soff, style, seg_enabled, seg_id, ov_items) in windows:
+                        if ws <= mid < we:
+                            eff_shift = shift + (soff or 0.0)
+                            item_style = style
+                            if seg_enabled is False:
+                                item_enabled = False
+                            if ov_items and len(ov_items) > 0:
+                                skip_due_to_override = True
+                                seg_id_for_item = seg_id
+                            break
+                if skip_due_to_override:
+                    continue
+                if not item_enabled:
+                    continue
+                nt0, nt1 = t0 + eff_shift, t1 + eff_shift
+                # clamp to valid range and enforce minimal duration
+                vdur = float(getattr(video_clip, 'duration', 0.0) or 0.0)
+                if vdur and vdur > 0:
+                    if nt1 < 0 or nt0 >= vdur:
+                        continue  # completely out of range
+                    nt0 = max(0.0, min(nt0, max(0.0, vdur - 0.05)))
+                    nt1 = max(nt0 + 0.1, min(nt1, vdur))
+                new_item = ((nt0, nt1), item[1])
+            except Exception:
+                new_item = item
+            # apply style overrides by creating clip with merged style
+            if item_style is None:
+                clip = create_text_clip(subtitle_item=new_item)
+            else:
+                # build merged style from params + item_style
+                try:
+                    # resolve font
+                    _font_name = item_style.get('font_name') or params.font_name
+                    _font_path = os.path.join(utils.font_dir(), _font_name) if _font_name else os.path.join(utils.font_dir(), "STHeitiMedium.ttc")
+                    if os.name == "nt":
+                        _font_path = _font_path.replace("\\", "/")
+                    # size and stroke
+                    _font_size = int(item_style.get('font_size') or params.font_size)
+                    _stroke_width = int(item_style.get('stroke_width') or params.stroke_width)
+                    _fore = item_style.get('text_fore_color') or params.text_fore_color
+                    _stroke = item_style.get('stroke_color') or params.stroke_color
+                    _bg = item_style.get('text_background_color')
+                    if _bg is None:
+                        _bg = params.text_background_color
+                    _pos = item_style.get('subtitle_position') or params.subtitle_position
+                    _custom = item_style.get('custom_position')
+                    if _custom is None:
+                        _custom = params.custom_position
+
+                    # local text clip creator using merged style
+                    def _create_clip(subtitle_item):
+                        phrase = subtitle_item[1]
+                        max_width = video_width * 0.9
+                        wrapped_txt, txt_height = wrap_text(
+                            phrase, max_width=max_width, font=_font_path, fontsize=_font_size
+                        )
+                        interline = int(_font_size * 0.25)
+                        size=(int(max_width), int(txt_height + _font_size * 0.25 + (interline * (wrapped_txt.count("\n") + 1))))
+
+                        _clip = TextClip(
+                            text=wrapped_txt,
+                            font=_font_path,
+                            font_size=_font_size,
+                            color=_fore,
+                            bg_color=_bg,
+                            stroke_color=_stroke,
+                            stroke_width=_stroke_width,
+                        )
+                        duration = subtitle_item[0][1] - subtitle_item[0][0]
+                        _clip = _clip.with_start(subtitle_item[0][0])
+                        _clip = _clip.with_end(subtitle_item[0][1])
+                        _clip = _clip.with_duration(duration)
+                        if _pos == "bottom":
+                            _clip = _clip.with_position(("center", video_height * 0.95 - _clip.h))
+                        elif _pos == "top":
+                            _clip = _clip.with_position(("center", video_height * 0.05))
+                        elif _pos == "custom":
+                            margin = 10
+                            max_y = video_height - _clip.h - margin
+                            min_y = margin
+                            custom_y = (video_height - _clip.h) * ((_custom or 70.0) / 100)
+                            custom_y = max(min_y, min(custom_y, max_y))
+                            _clip = _clip.with_position(("center", custom_y))
+                        else:
+                            _clip = _clip.with_position(("center", "center"))
+                        return _clip
+
+                    clip = _create_clip(new_item)
+                except Exception:
+                    clip = create_text_clip(subtitle_item=new_item)
             text_clips.append(clip)
+        # add override items clips
+        for (ws, we, soff, style, seg_enabled, seg_id, ov_items) in windows:
+            if not ov_items or seg_enabled is False:
+                continue
+            eff_shift_local = shift + (soff or 0.0)
+            for (rel_times, txt) in ov_items:
+                try:
+                    t0r, t1r = float(rel_times[0]), float(rel_times[1])
+                except Exception:
+                    t0r, t1r = 0.0, max(0.1, we - ws)
+                nt0 = ws + t0r + eff_shift_local
+                nt1 = ws + t1r + eff_shift_local
+                # clamp bounds
+                vdur = float(getattr(video_clip, 'duration', 0.0) or 0.0)
+                if vdur and vdur > 0:
+                    if nt1 < 0 or nt0 >= vdur:
+                        continue
+                    nt0 = max(0.0, min(nt0, max(0.0, vdur - 0.05)))
+                    nt1 = max(nt0 + 0.1, min(nt1, vdur))
+                new_item = ((nt0, nt1), txt)
+                # create clip using merged style similar to above
+                if style is None:
+                    clip = create_text_clip(subtitle_item=new_item)
+                else:
+                    try:
+                        _font_name = style.get('font_name') or params.font_name
+                        _font_path = os.path.join(utils.font_dir(), _font_name) if _font_name else os.path.join(utils.font_dir(), "STHeitiMedium.ttc")
+                        if os.name == "nt":
+                            _font_path = _font_path.replace("\\", "/")
+                        _font_size = int(style.get('font_size') or params.font_size)
+                        _stroke_width = int(style.get('stroke_width') or params.stroke_width)
+                        _fore = style.get('text_fore_color') or params.text_fore_color
+                        _stroke = style.get('stroke_color') or params.stroke_color
+                        _bg = style.get('text_background_color')
+                        if _bg is None:
+                            _bg = params.text_background_color
+                        _pos = style.get('subtitle_position') or params.subtitle_position
+                        _custom = style.get('custom_position')
+                        if _custom is None:
+                            _custom = params.custom_position
+
+                        def _create_clip2(subtitle_item):
+                            phrase = subtitle_item[1]
+                            max_width = video_width * 0.9
+                            wrapped_txt, txt_height = wrap_text(phrase, max_width=max_width, font=_font_path, fontsize=_font_size)
+                            interline = int(_font_size * 0.25)
+                            size=(int(max_width), int(txt_height + _font_size * 0.25 + (interline * (wrapped_txt.count("\n") + 1))))
+                            _clip = TextClip(text=wrapped_txt, font=_font_path, font_size=_font_size, color=_fore, bg_color=_bg, stroke_color=_stroke, stroke_width=_stroke_width)
+                            duration = subtitle_item[0][1] - subtitle_item[0][0]
+                            _clip = _clip.with_start(subtitle_item[0][0]).with_end(subtitle_item[0][1]).with_duration(duration)
+                            if _pos == "bottom":
+                                _clip = _clip.with_position(("center", video_height * 0.95 - _clip.h))
+                            elif _pos == "top":
+                                _clip = _clip.with_position(("center", video_height * 0.05))
+                            elif _pos == "custom":
+                                margin = 10
+                                max_y = video_height - _clip.h - margin
+                                min_y = margin
+                                custom_y = (video_height - _clip.h) * ((_custom or 70.0) / 100)
+                                custom_y = max(min_y, min(custom_y, max_y))
+                                _clip = _clip.with_position(("center", custom_y))
+                            else:
+                                _clip = _clip.with_position(("center", "center"))
+                            return _clip
+                        clip = _create_clip2(new_item)
+                    except Exception:
+                        clip = create_text_clip(subtitle_item=new_item)
+                text_clips.append(clip)
         video_clip = CompositeVideoClip([video_clip, *text_clips])
 
     bgm_file = get_bgm_file(bgm_type=params.bgm_type, bgm_file=params.bgm_file)

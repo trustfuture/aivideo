@@ -1,5 +1,7 @@
 # MoneyPrinterTurbo Web 产品化与对齐计划
 
+> 注：关于多工具 AIGC 的信息架构、路由与统一任务编排，请参阅 `docs/web-aigc-multi-tool-product-plan.md`（与本计划、以及 `docs/web-ui-ux-implementation-plan.md` 互补）。
+
 面向目标：将现有 Next.js 前端从 “Demo 工具” 打磨为“可用产品”，实现与 Streamlit WebUI 功能对齐，提供清晰的任务流、可配置能力与稳定的渲染体验。
 
 ---

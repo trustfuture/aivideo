@@ -1,6 +1,6 @@
 # Web UI/UX 设计实施方案（Next.js + shadcn‑ui + Tailwind v4，Linear 风格）
 
-> 目的：暂停功能开发，集中统一视觉与交互范式，建立可扩展设计系统，提升关键用户旅程与可访问性。本方案与 `docs/web-productization-plan.md` 互补，聚焦 UI/UX 规范与落地步骤。
+> 目的：暂停功能开发，集中统一视觉与交互范式，建立可扩展设计系统，提升关键用户旅程与可访问性。本方案与 `docs/web-productization-plan.md`、`docs/web-aigc-multi-tool-product-plan.md` 互补，聚焦 UI/UX 规范与落地步骤（AIGC 多能力 IA/路由/任务编排详见多工具产品化文档）。
 
 ## 目标与范围
 - 统一视觉/交互，降低视觉噪音与认知负担。

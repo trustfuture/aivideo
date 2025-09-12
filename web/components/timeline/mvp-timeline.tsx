@@ -24,13 +24,39 @@ type Props = {
   disabledExternally?: boolean
   // base task params from creation time (should include video_subject, etc.)
   baseParams?: VideoParams
+  // controlled selection from parent (optional)
+  selectedIds?: string[]
+  onSelectedIdsChange?: (ids: string[]) => void
+  // notify parent when segments change (for single source of truth in SequenceEditor)
+  onSegmentsChange?: (next: SegmentItem[]) => void
+  // external render params to override internal subtitle/bgm settings
+  externalRenderParams?: Partial<VideoParams>
+  // hide internal UI sections when parent takes over
+  hideTopActions?: boolean
+  hideGlobalPanel?: boolean
+  // hide the small preview-only tip (useful when parent already explains)
+  hidePreviewTip?: boolean
+  // compact mode: hide bulk editor and per-segment cards beneath the timeline
+  compact?: boolean
+  // expose render controls to parent
+  onRegisterControls?: (ctrl: {
+    preview: (count: number) => void
+    previewSegment: (id: string) => void
+    renderFull: () => void
+    cancel: () => void
+    openLastPreview: () => void
+    retryLastFailed: () => void
+    getState: () => { renderMode: 'preview'|'full'|null, canRender: boolean, hasErrors: boolean, queue: number, lastPreviewUrl: string | null, disabledExternally: boolean }
+    getPreviewCount: () => number
+    setPreviewCount: (n: number) => void
+  }) => void
 }
 
 function normalizeOrders(list: SegmentItem[]) {
   return list.map((s, idx) => ({ ...s, order: idx + 1 }))
 }
 
-export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0, disabledExternally = false, baseParams }: Props) {
+export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0, disabledExternally = false, baseParams, selectedIds, onSelectedIdsChange, externalRenderParams, hideTopActions, hideGlobalPanel, hidePreviewTip, compact, onRegisterControls, onSegmentsChange }: Props) {
   const [segments, setSegments] = useState(() => normalizeOrders(initialSegments))
   const [isPending, startTransition] = useTransition()
   const canRender = segments && segments.length > 0
@@ -38,6 +64,12 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
   // timeline scale: pixels per second
   const [pxPerSec, setPxPerSec] = useState<number>(60)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const controlledSelection = Array.isArray(selectedIds) && typeof onSelectedIdsChange === 'function'
+  const selectedSet = useMemo(() => controlledSelection ? new Set(selectedIds) : selected, [controlledSelection, selectedIds, selected])
+  const setSelection = (next: Set<string>) => {
+    if (controlledSelection) onSelectedIdsChange!(Array.from(next))
+    else setSelected(next)
+  }
   const [anchorId, setAnchorId] = useState<string | null>(null)
   const [deleted, setDeleted] = useState<SegmentItem[]>([])
   const [saving, setSaving] = useState(false)
@@ -137,10 +169,10 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
   const mergedParams = useMemo(() => {
     const subject = (baseParams || {})?.video_subject
     if (typeof subject === 'string') {
-      return { ...baseParams, ...renderParams }
+      return { ...baseParams, ...(externalRenderParams || renderParams) }
     }
     return undefined
-  }, [baseParams, renderParams])
+  }, [baseParams, renderParams, externalRenderParams])
 
   useEffect(() => {
     let canceled = false
@@ -184,7 +216,9 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
     const tmp = next[index]
     next[index] = next[target]
     next[target] = tmp
-    setSegments(normalizeOrders(next))
+    const norm = normalizeOrders(next)
+    setSegments(norm)
+    try { onSegmentsChange && onSegmentsChange(norm) } catch {}
   }
 
   function onDragEnd(event: DragEndEvent) {
@@ -195,7 +229,9 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
     const newIndex = segments.findIndex(s => s.segment_id === over.id)
     if (oldIndex === -1 || newIndex === -1) return
     const moved = arrayMove(segments, oldIndex, newIndex)
-    setSegments(normalizeOrders(moved))
+    const norm = normalizeOrders(moved)
+    setSegments(norm)
+    try { onSegmentsChange && onSegmentsChange(norm) } catch {}
   }
 
   function updateField(index: number, key: keyof SegmentItem, value: any) {
@@ -208,6 +244,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
     // @ts-expect-error index assignment
     next[index][key] = casted
     setSegments(next)
+    try { onSegmentsChange && onSegmentsChange(next) } catch {}
   }
 
   function updateStart(index: number, value: any) {
@@ -220,6 +257,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
     const dur = isFinite(end) ? Math.max(minDur, end - safeStart) : Number(next[index].duration) || minDur
     next[index].duration = dur
     setSegments(next)
+    try { onSegmentsChange && onSegmentsChange(next) } catch {}
   }
 
   function updateEnd(index: number, value: any) {
@@ -231,6 +269,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
     next[index].end = safeEnd
     next[index].duration = Math.max(minDur, safeEnd - start)
     setSegments(next)
+    try { onSegmentsChange && onSegmentsChange(next) } catch {}
   }
 
   function updateDuration(index: number, value: any) {
@@ -241,32 +280,35 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
     next[index].duration = dur
     next[index].end = start + dur
     setSegments(next)
+    try { onSegmentsChange && onSegmentsChange(next) } catch {}
   }
 
   function toggleSelect(id: string, checked: boolean) {
-    const next = new Set(selected)
+    const next = new Set(selectedSet)
     if (checked) next.add(id)
     else next.delete(id)
-    setSelected(next)
+    setSelection(next)
     setAnchorId(id)
   }
 
   function selectAll(checked: boolean) {
-    if (!checked) return setSelected(new Set())
-    setSelected(new Set(segments.map(s => s.segment_id)))
+    if (!checked) return setSelection(new Set())
+    setSelection(new Set(segments.map(s => s.segment_id)))
   }
 
   function deleteSelected() {
-    if (selected.size === 0) return
+    if (selectedSet.size === 0) return
     const keep: SegmentItem[] = []
     const removed: SegmentItem[] = []
     for (const s of segments) {
-      if (selected.has(s.segment_id)) removed.push(s)
+      if (selectedSet.has(s.segment_id)) removed.push(s)
       else keep.push(s)
     }
     setDeleted(prev => [...prev, ...removed])
-    setSegments(normalizeOrders(keep))
-    setSelected(new Set())
+    const norm = normalizeOrders(keep)
+    setSegments(norm)
+    try { onSegmentsChange && onSegmentsChange(norm) } catch {}
+    setSelection(new Set())
     toast.success(`已删除 ${removed.length} 段，可点击“恢复一段”撤销`)
   }
 
@@ -275,14 +317,17 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
     const copy = [...deleted]
     const seg = copy.pop()!
     setDeleted(copy)
-    setSegments(normalizeOrders([...segments, seg]))
+    const norm = normalizeOrders([...segments, seg])
+    setSegments(norm)
+    try { onSegmentsChange && onSegmentsChange(norm) } catch {}
     toast.success('已恢复 1 段到列表末尾')
   }
 
   function applyBulk(patch: Partial<Pick<SegmentItem, 'duration' | 'speed' | 'transition'>>) {
-    if (selected.size === 0) return
-    const next = segments.map(s => selected.has(s.segment_id) ? { ...s, ...patch } : s)
+    if (selectedSet.size === 0) return
+    const next = segments.map(s => selectedSet.has(s.segment_id) ? { ...s, ...patch } : s)
     setSegments(next)
+    try { onSegmentsChange && onSegmentsChange(next) } catch {}
   }
 
   function buildSignature(segs: SegmentItem[]) {
@@ -389,6 +434,26 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
     await _renderInternal(segList, mode, sig)
   }
 
+  // Expose controls to parent when requested
+  useEffect(() => {
+    if (!onRegisterControls) return
+    const ctrl = {
+      preview: (count: number) => startTransition(() => render(Math.max(1, Math.floor(count || 1)))),
+      previewSegment: (id: string) => {
+        const idx = segments.findIndex(x => x.segment_id === id)
+        if (idx >= 0) previewOne(idx)
+      },
+      renderFull: () => startTransition(() => render()),
+      cancel: () => { try { renderAbortRef.current?.abort() } catch {} },
+      openLastPreview: () => { if (lastPreviewUrlRef.current) window.open(lastPreviewUrlRef.current, '_blank') },
+      retryLastFailed: () => { if (lastFailed) _renderInternal(lastFailed.segs, lastFailed.mode, lastFailed.sig) },
+      getState: () => ({ renderMode, canRender, hasErrors, queue: queue.length, lastPreviewUrl: lastPreviewUrlRef.current, disabledExternally }),
+      getPreviewCount: () => previewCount,
+      setPreviewCount: (n: number) => setPreviewCount(Math.max(1, Math.min(Math.floor(n || 1), segments.length || 1))),
+    }
+    onRegisterControls(ctrl)
+  }, [onRegisterControls, renderMode, canRender, hasErrors, queue, disabledExternally, previewCount, segments.length])
+
   async function previewOne(index: number) {
     const s = segments[index]
     if (!s) return
@@ -463,13 +528,14 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
 
   return (
     <div className="space-y-4">
+      {!hideTopActions && (
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           <input type="checkbox" className="h-4 w-4" onChange={e => selectAll(e.target.checked)}
-                 checked={selected.size > 0 && selected.size === segments.length} aria-label="全选" />
+                 checked={selectedSet.size > 0 && selectedSet.size === segments.length} aria-label="全选" />
           全选
         </label>
-        <div className="text-sm text-muted-foreground">已选 {selected.size} 段</div>
+        <div className="text-sm text-muted-foreground">已选 {selectedSet.size} 段</div>
         <div className="ml-auto" />
         <Button
           disabled={isPending || !canRender || hasErrors || disabledExternally || renderMode !== null}
@@ -519,13 +585,17 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
           {saving ? '保存中…' : (dirty ? '保存分镜' : '已保存')}
         </Button>
       </div>
+      )}
 
       {/* 预览提示：仅合成不混流，不含字幕/音频 */}
-      <div className="rounded border border-border bg-muted p-2 text-xs text-muted-foreground">
-        提示：预览仅返回合成画面用于快看节奏，不包含字幕与 BGM/配音；字幕会在“全量渲染”后出现在成片中。
-      </div>
+      {!hidePreviewTip && (
+        <div className="rounded border border-border bg-muted p-2 text-xs text-muted-foreground">
+          提示：预览仅返回合成画面用于快看节奏，不包含字幕与 BGM/配音；字幕会在“全量渲染”后出现在成片中。
+        </div>
+      )}
 
       {/* 字幕与音频体验（P1） */}
+      {!hideGlobalPanel && (
       <div className="rounded border bg-card p-3 text-sm transition-all hover:shadow-sm">
         <div className="mb-2 font-medium">字幕与音频</div>
         <div className="grid gap-3 md:grid-cols-3">
@@ -628,6 +698,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
           </label>
         </div>
       </div>
+      )}
 
       {/* 横向时间线（P1：dnd-kit 拖拽 + 选中高亮 + 缩略图 + 时码标尺） */}
       {segments.length > 0 && (
@@ -660,9 +731,9 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                     selectAll(true)
                     e.preventDefault()
                   } else if (e.key === 'Escape') {
-                    setSelected(new Set())
+                    setSelection(new Set())
                     e.preventDefault()
-                  } else if ((e.key === 'Delete' || e.key === 'Backspace') && selected.size > 0) {
+                  } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedSet.size > 0) {
                     deleteSelected()
                     e.preventDefault()
                   } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -673,7 +744,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                     const idx = ids.indexOf(currentId)
                     const nextIdx = e.key === 'ArrowLeft' ? Math.max(0, idx - 1) : Math.min(ids.length - 1, idx + 1)
                     const nextId = ids[nextIdx]
-                    setSelected(new Set([nextId]))
+                    setSelection(new Set([nextId]))
                     setAnchorId(nextId)
                     e.preventDefault()
                   }
@@ -681,7 +752,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                 onClick={(e) => {
                   if (e.currentTarget === e.target) {
                     // 点击空白区域清空选择
-                    setSelected(new Set())
+                    setSelection(new Set())
                     setAnchorId(null)
                   }
                 }}
@@ -700,7 +771,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                       thumbUrl={thumbUrl}
                       fallbackThumbUrl={fallbackThumbUrl}
                       label={(s.order ?? 0) + '. ' + (s.scene_title || '未命名')}
-                      selected={selected.has(s.segment_id)}
+                      selected={selectedSet.has(s.segment_id)}
                       disabled={renderMode !== null || disabledExternally}
                       scale={pxPerSec}
                       onTrim={(deltaSec, side, baseStart, baseEnd) => {
@@ -732,13 +803,13 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                           const start = Math.max(0, Math.min(anchorIdx === -1 ? 0 : anchorIdx, idx))
                           const end = Math.max(anchorIdx === -1 ? 0 : anchorIdx, idx)
                           const ids = segments.slice(start, end + 1).map(x => x.segment_id)
-                          setSelected(new Set(ids))
+                          setSelection(new Set(ids))
                           setAnchorId(s.segment_id)
                         } else if (ev.metaKey || ev.ctrlKey) {
-                          toggleSelect(s.segment_id, !selected.has(s.segment_id))
+                          toggleSelect(s.segment_id, !selectedSet.has(s.segment_id))
                           setAnchorId(s.segment_id)
                         } else {
-                          setSelected(new Set([s.segment_id]))
+                          setSelection(new Set([s.segment_id]))
                           setAnchorId(s.segment_id)
                         }
                       }}
@@ -757,8 +828,9 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
         </div>
       )}
 
+      {!compact && (
       <div className="flex flex-wrap items-center gap-3 rounded border bg-card p-3 text-sm transition-all hover:shadow-sm">
-        <div className="text-muted-foreground">批量编辑（作用于已选 {selected.size} 段）</div>
+        <div className="text-muted-foreground">批量编辑（作用于已选 {selectedSet.size} 段）</div>
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">时长</span>
           <Input type="number" min={0.5} step={0.1} className="h-8 w-24" placeholder="秒" disabled={renderMode !== null || disabledExternally}
@@ -794,12 +866,13 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
           </Select>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" disabled={selected.size === 0} onClick={deleteSelected}>删除已选</Button>
+          <Button variant="outline" disabled={selectedSet.size === 0} onClick={deleteSelected}>删除已选</Button>
           <Button variant="outline" disabled={deleted.length === 0} onClick={restoreOne}>恢复一段</Button>
         </div>
       </div>
+      )}
 
-      {segments.length === 0 ? (
+      {!compact && (segments.length === 0 ? (
         <div className="text-sm text-muted-foreground">暂无分镜。</div>
       ) : (
         <ol className="space-y-2">
@@ -809,7 +882,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                 <input
                   type="checkbox"
                   className="h-4 w-4"
-                  checked={selected.has(s.segment_id)}
+                  checked={selectedSet.has(s.segment_id)}
                   onChange={e => toggleSelect(s.segment_id, e.target.checked)}
                   aria-label={`选择分镜 ${s.order}`}
                 />
@@ -821,7 +894,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" onClick={() => move(i, -1)} disabled={i === 0}>上移</Button>
                   <Button variant="outline" size="sm" onClick={() => move(i, 1)} disabled={i === segments.length - 1}>下移</Button>
-                  <Button variant="outline" size="sm" onClick={() => { setDeleted(d => [...d, s]); setSegments(normalizeOrders(segments.filter(x => x.segment_id !== s.segment_id))); setSelected(prev => { const n = new Set(prev); n.delete(s.segment_id); return n }) }}>删除</Button>
+                  <Button variant="outline" size="sm" onClick={() => { setDeleted(d => [...d, s]); setSegments(normalizeOrders(segments.filter(x => x.segment_id !== s.segment_id))); const n = new Set(selectedSet); n.delete(s.segment_id); setSelection(n) }}>删除</Button>
                   <Button variant="outline" size="sm" onClick={() => { setPickerIndex(i); setPickerMode('replace') }}>替换素材</Button>
                   <Button variant="outline" size="sm" onClick={() => { setPickerIndex(i); setPickerMode('requery') }}>重检索</Button>
                   <Button variant="outline" size="sm" onClick={() => previewOne(i)}>预览此段</Button>
@@ -939,7 +1012,8 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
             </li>
           ))}
         </ol>
-      )}
+      ))}
+      {!compact && (
       <div className="text-xs">
         <div className="text-muted-foreground">总时长：{formatTime(totalDuration)}{audioDuration ? ` / 音频：${formatTime(audioDuration)}` : ''}</div>
         {audioDuration > 0 && totalDuration - audioDuration > 0.05 && (
@@ -949,6 +1023,8 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
           <div className="text-red-600">存在无效参数，请修正红框字段后再渲染。</div>
         )}
       </div>
+      )}
+      {!compact && (
       <MaterialPicker
         open={pickerIndex != null}
         onOpenChange={(v) => { if (!v) { setPickerIndex(null); setPickerMode(null) } }}
@@ -983,6 +1059,7 @@ export default function MvpTimeline({ taskId, initialSegments, audioDuration = 0
           }
         }}
       />
+      )}
     </div>
   )
 }
